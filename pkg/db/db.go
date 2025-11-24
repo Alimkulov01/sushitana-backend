@@ -40,7 +40,6 @@ type dbConn struct {
 }
 
 func NewDBConn(params Params) (Querier, error) {
-
 	var (
 		dns = params.Config.GetString("database.dns")
 		err error

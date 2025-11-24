@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/fx"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -33,7 +34,7 @@ type config struct {
 }
 
 func NewConfig() IConfig {
-
+	_ = godotenv.Load()
 	cfg := viper.New()
 	pwd, err := os.Getwd()
 	if err != nil {
@@ -54,7 +55,53 @@ func NewConfig() IConfig {
 	cfg.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	cfg.AutomaticEnv()
 
-	cfg.WatchConfig()
+	_ = cfg.BindEnv("server.host", "SERVICE_HOST")
+	_ = cfg.BindEnv("server.port", "SERVICE_HTTP_PORT")
+
+	_ = cfg.BindEnv("database.dns", "DATABASE_DNS")
+	_ = cfg.BindEnv("database.migration", "DATABASE_MIGRATION")
+	_ = cfg.BindEnv("database.host", "POSTGRES_HOST")
+	_ = cfg.BindEnv("database.user", "POSTGRES_USER")
+	_ = cfg.BindEnv("database.password", "POSTGRES_PASSWORD")
+	_ = cfg.BindEnv("database.dbname", "POSTGRES_DATABASE")
+	_ = cfg.BindEnv("database.port", "POSTGRES_PORT")
+	_ = cfg.BindEnv("database.pool_max_conns", "POSTGRES_MAX_CONNECTION")
+	_ = cfg.BindEnv("database.pool_max_conn_lifetime", "POSTGRES_POOL_MAX_CONN_LIFETIME")
+
+	_ = cfg.BindEnv("aws_access_key_id", "AWS_ACCESS_KEY_ID")
+	_ = cfg.BindEnv("aws_secret_access_key", "AWS_SECRET_ACCESS_KEY")
+	_ = cfg.BindEnv("aws_region", "AWS_REGION")
+	_ = cfg.BindEnv("aws_s3_bucket", "AWS_S3_BUCKET")
+
+	_ = cfg.BindEnv("redis.password", "REDIS_PASSWORD")
+	_ = cfg.BindEnv("redis.addrs", "REDIS_ADDRS")
+
+	_ = cfg.BindEnv("admin_chat_id", "ADMIN_CHAT_ID")
+	_ = cfg.BindEnv("gin.trusted_proxies", "GIN_TRUSTED_PROXIES")
+
+	if addrs := os.Getenv("REDIS_ADDRS"); addrs != "" {
+		cfg.Set("redis.addrs", strings.Split(addrs, ","))
+	}
+
+	if cfg.GetString("database.dns") == "" {
+		dsn := BuildPostgresDSNFromViper(cfg)
+		if dsn != "" {
+			cfg.Set("database.dns", dsn)
+		}
+	}
+	if cfg.GetString("database.migration") == "" {
+		pgURL := BuildPostgresURLFromViper(cfg)
+		if pgURL != "" {
+			cfg.Set("database.migration", pgURL)
+		}
+	}
+
+	if cfg.GetString("database.url") == "" {
+		pgURL := BuildPostgresURLFromViper(cfg)
+		if pgURL != "" {
+			cfg.Set("database.url", pgURL)
+		}
+	}
 
 	return &config{cfg: cfg}
 }
@@ -104,4 +151,99 @@ func (c *config) UnmarshalKey(key string, val interface{}) error {
 
 func (c *config) GetDuration(key string) time.Duration {
 	return c.cfg.GetDuration(key)
+}
+
+func BuildPostgresDSNFromViper(v *viper.Viper) string {
+	user := v.GetString("database.user")
+	if user == "" {
+		user = v.GetString("POSTGRES_USER")
+	}
+	password := v.GetString("database.password")
+	if password == "" {
+		password = v.GetString("POSTGRES_PASSWORD")
+	}
+	dbname := v.GetString("database.dbname")
+	if dbname == "" {
+		dbname = v.GetString("POSTGRES_DATABASE")
+	}
+	host := v.GetString("database.host")
+	if host == "" {
+		host = v.GetString("POSTGRES_HOST")
+	}
+	port := v.GetString("database.port")
+	if port == "" {
+		port = v.GetString("POSTGRES_PORT")
+	}
+	poolMaxConns := v.GetInt("database.pool_max_conns")
+	if poolMaxConns == 0 {
+		poolMaxConns = v.GetInt("POSTGRES_MAX_CONNECTION")
+	}
+	if poolMaxConns == 0 {
+		poolMaxConns = 30
+	}
+	poolLifetime := v.GetString("database.pool_max_conn_lifetime")
+	if poolLifetime == "" {
+		poolLifetime = "1h30m"
+	}
+
+	if user == "" && host == "" && dbname == "" {
+		return ""
+	}
+
+	parts := []string{}
+	if user != "" {
+		parts = append(parts, "user="+user)
+	}
+	if password != "" {
+		parts = append(parts, "password="+password)
+	}
+	if dbname != "" {
+		parts = append(parts, "dbname="+dbname)
+	}
+	if host != "" {
+		parts = append(parts, "host="+host)
+	}
+	if port != "" {
+		parts = append(parts, "port="+port)
+	}
+	parts = append(parts, fmt.Sprintf("pool_max_conns=%d", poolMaxConns))
+	parts = append(parts, fmt.Sprintf("pool_max_conn_lifetime=%s", poolLifetime))
+
+	return strings.Join(parts, " ")
+}
+
+func BuildPostgresURLFromViper(v *viper.Viper) string {
+	user := v.GetString("database.user")
+	if user == "" {
+		user = v.GetString("POSTGRES_USER")
+	}
+	password := v.GetString("database.password")
+	if password == "" {
+		password = v.GetString("POSTGRES_PASSWORD")
+	}
+	host := v.GetString("database.host")
+	if host == "" {
+		host = v.GetString("POSTGRES_HOST")
+	}
+	port := v.GetString("database.port")
+	if port == "" {
+		port = v.GetString("POSTGRES_PORT")
+	}
+	dbname := v.GetString("database.dbname")
+	if dbname == "" {
+		dbname = v.GetString("POSTGRES_DATABASE")
+	}
+
+	if user == "" || host == "" || dbname == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		user,
+		password,
+		host,
+		port,
+		dbname,
+	)
 }
