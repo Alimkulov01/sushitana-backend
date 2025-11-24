@@ -78,6 +78,7 @@ func NewConfig() IConfig {
 
 	_ = cfg.BindEnv("admin_chat_id", "ADMIN_CHAT_ID")
 	_ = cfg.BindEnv("gin.trusted_proxies", "GIN_TRUSTED_PROXIES")
+	_ = cfg.BindEnv("bot_token_sushitana", "BOT_TOKEN_SUSHITANA")
 
 	if addrs := os.Getenv("REDIS_ADDRS"); addrs != "" {
 		cfg.Set("redis.addrs", strings.Split(addrs, ","))
