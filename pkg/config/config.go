@@ -35,29 +35,13 @@ type config struct {
 
 func NewConfig() IConfig {
 	_ = godotenv.Load()
+
 	cfg := viper.New()
-	pwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("dir: %s\n", pwd)
-	cfg.AddConfigPath(pwd + "/configs")
-	cfg.AddConfigPath("../configs")
-
-	cfg.SetConfigName("configs.json")
-	cfg.SetConfigType("json")
-
-	if err := cfg.ReadInConfig(); err != nil {
-		panic(err)
-	}
-
 	cfg.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	cfg.AutomaticEnv()
 
 	_ = cfg.BindEnv("server.host", "SERVICE_HOST")
 	_ = cfg.BindEnv("server.port", "SERVICE_HTTP_PORT")
-
 	_ = cfg.BindEnv("database.dns", "DATABASE_DNS")
 	_ = cfg.BindEnv("database.migration", "DATABASE_MIGRATION")
 	_ = cfg.BindEnv("database.host", "POSTGRES_HOST")
@@ -67,15 +51,12 @@ func NewConfig() IConfig {
 	_ = cfg.BindEnv("database.port", "POSTGRES_PORT")
 	_ = cfg.BindEnv("database.pool_max_conns", "POSTGRES_MAX_CONNECTION")
 	_ = cfg.BindEnv("database.pool_max_conn_lifetime", "POSTGRES_POOL_MAX_CONN_LIFETIME")
-
 	_ = cfg.BindEnv("aws_access_key_id", "AWS_ACCESS_KEY_ID")
 	_ = cfg.BindEnv("aws_secret_access_key", "AWS_SECRET_ACCESS_KEY")
 	_ = cfg.BindEnv("aws_region", "AWS_REGION")
 	_ = cfg.BindEnv("aws_s3_bucket", "AWS_S3_BUCKET")
-
 	_ = cfg.BindEnv("redis.password", "REDIS_PASSWORD")
 	_ = cfg.BindEnv("redis.addrs", "REDIS_ADDRS")
-
 	_ = cfg.BindEnv("admin_chat_id", "ADMIN_CHAT_ID")
 	_ = cfg.BindEnv("gin.trusted_proxies", "GIN_TRUSTED_PROXIES")
 	_ = cfg.BindEnv("bot_token_sushitana", "BOT_TOKEN_SUSHITANA")
@@ -85,22 +66,18 @@ func NewConfig() IConfig {
 	}
 
 	if cfg.GetString("database.dns") == "" {
-		dsn := BuildPostgresDSNFromViper(cfg)
-		if dsn != "" {
+		if dsn := BuildPostgresDSNFromViper(cfg); dsn != "" {
 			cfg.Set("database.dns", dsn)
 		}
 	}
-	if cfg.GetString("database.migration") == "" {
-		pgURL := BuildPostgresURLFromViper(cfg)
-		if pgURL != "" {
-			cfg.Set("database.migration", pgURL)
+	if cfg.GetString("database.url") == "" {
+		if url := BuildPostgresURLFromViper(cfg); url != "" {
+			cfg.Set("database.url", url)
 		}
 	}
-
-	if cfg.GetString("database.url") == "" {
-		pgURL := BuildPostgresURLFromViper(cfg)
-		if pgURL != "" {
-			cfg.Set("database.url", pgURL)
+	if cfg.GetString("database.migration") == "" {
+		if url := BuildPostgresURLFromViper(cfg); url != "" {
+			cfg.Set("database.migration", url)
 		}
 	}
 

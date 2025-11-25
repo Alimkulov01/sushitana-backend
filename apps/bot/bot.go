@@ -62,7 +62,6 @@ func NewBot(p Params) error {
 
 	tgrouter.On(bot, tgrouter.State("show_main_menu"), p.ClientsCmd.MainMenuHandler)
 	tgrouter.On(bot, tgrouter.State("waiting_change_language"), p.ClientsCmd.ChangeLanguage)
-	tgrouter.On(bot, tgrouter.State("show_category"), p.CategoryCmd.MenuCategoryInfo)
 	tgrouter.On(bot, tgrouter.State("category_selected"), p.CategoryCmd.MenuCategoryHandler)
 
 	// //product

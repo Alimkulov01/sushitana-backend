@@ -40,61 +40,11 @@ func New(p Params) Commands {
 	}
 }
 
-func (c *Commands) MenuCategoryInfo(ctx *tgrouter.Ctx) {
-	chatID := ctx.Update().FromChat().ID
-	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
-	if account == nil {
-		c.logger.Error(ctx.Context, "account not found")
-		return
-	}
-
-	lang := account.Language
-
-	cats, err := c.CategorySvc.GetList(ctx.Context, structs.GetListCategoryRequest{})
-	if err != nil {
-		c.logger.Error(ctx.Context, "failed to get categories", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(utils.RU, texts.Retry)))
-		return
-	}
-
-	var keyboardRows [][]tgbotapi.KeyboardButton
-
-	var row []tgbotapi.KeyboardButton
-
-	for _, cat := range cats.Categories {
-		name := getCategoryNameByLang(lang, cat.Name)
-		btn := tgbotapi.NewKeyboardButton(name)
-		row = append(row, btn)
-		if len(row) == 2 {
-			keyboardRows = append(keyboardRows, row)
-			row = []tgbotapi.KeyboardButton{}
-		}
-	}
-	if len(row) > 0 {
-		keyboardRows = append(keyboardRows, row)
-	}
-	backText := texts.Get(lang, texts.BackButton)
-
-	backRow := tgbotapi.NewKeyboardButtonRow(
-		tgbotapi.NewKeyboardButton(backText),
-	)
-	keyboardRows = append(keyboardRows, backRow)
-
-	keyboard := tgbotapi.NewReplyKeyboard(keyboardRows...)
-
-	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
-	msg.ReplyMarkup = keyboard
-
-	ctx.Bot().Send(msg)
-	_ = ctx.UpdateState("category_selected", map[string]string{"last_action": "show_category"})
-}
-
 func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
 		return
 	}
 	text := strings.TrimSpace(ctx.Update().Message.Text)
-	fmt.Println(text)
 	chatID := ctx.Update().Message.Chat.ID
 
 	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -106,7 +56,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	cats, err := c.CategorySvc.GetList(ctx.Context, structs.GetListCategoryRequest{})
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get categories", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(utils.RU, texts.Retry)))
+		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
 	for _, cat := range cats.Categories {

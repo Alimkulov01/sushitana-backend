@@ -5,6 +5,7 @@ import (
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control/user"
+	"sushitana/apps/gateway/handlers/product"
 
 	"net/http"
 	"sushitana/apps/gateway/handlers/middleware"
@@ -33,6 +34,7 @@ type Params struct {
 	User      user.Handler
 	Client    client.Handler
 	Category  category.Handler
+	Product   product.Handler
 }
 
 func NewRouter(params Params) {
@@ -67,16 +69,15 @@ func NewRouter(params Params) {
 		categoryGroup.PATCH("/:id", params.Category.PatchCategory)
 		categoryGroup.DELETE("/:id", params.Category.DeleteCategory)
 	}
-	// productGroup := out.Group("/product",
-	// 	params.CheckAuth(),
-	// )
-	// {
-	// 	productGroup.POST("/", params.Product.CreateProduct)
-	// 	productGroup.GET("/:id", params.Product.GetByIDProduct)
-	// 	productGroup.GET("/", params.Product.GetListProduct)
-	// 	productGroup.PATCH("/:id", params.Product.PatchProduct)
-	// 	productGroup.DELETE("/:id", params.Product.DeleteProduct)
-	// }
+	productGroup := out.Group("/product") // params.CheckAuth(),
+
+	{
+		productGroup.POST("/", params.Product.CreateProduct)
+		productGroup.GET("/:id", params.Product.GetByIDProduct)
+		productGroup.GET("/", params.Product.GetListProduct)
+		productGroup.PATCH("/:id", params.Product.PatchProduct)
+		productGroup.DELETE("/:id", params.Product.DeleteProduct)
+	}
 
 	server := http.Server{
 		Addr: params.Config.GetString("server.port"),

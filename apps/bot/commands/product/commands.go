@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	// "sushitana/apps/bot/commands/category"
+	"sushitana/internal/category"
 	"sushitana/internal/product"
 	"sushitana/internal/structs"
 	"sushitana/internal/texts"
@@ -22,22 +22,22 @@ var Module = fx.Provide(New)
 
 type Params struct {
 	fx.In
-	Logger     logger.Logger
-	ProductSvc product.Service
-	// CategoryCmd category.Commands
+	Logger      logger.Logger
+	ProductSvc  product.Service
+	CategorySvc category.Service
 }
 
 type Commands struct {
-	logger     logger.Logger
-	ProductSvc product.Service
-	// CategoryCmd category.Commands
+	logger      logger.Logger
+	ProductSvc  product.Service
+	CategorySvc category.Service
 }
 
 func New(p Params) Commands {
 	return Commands{
-		logger:     p.Logger,
-		ProductSvc: p.ProductSvc,
-		// CategoryCmd: p.CategoryCmd,
+		logger:      p.Logger,
+		ProductSvc:  p.ProductSvc,
+		CategorySvc: p.CategorySvc,
 	}
 }
 
@@ -56,7 +56,7 @@ func (c *Commands) CategoryByMenu(ctx *tgrouter.Ctx) {
 	})
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get products", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(utils.RU, texts.Retry)))
+		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
 	var keyboardRows [][]tgbotapi.KeyboardButton
@@ -116,7 +116,7 @@ func (c *Commands) MenuCategoryMenuHandler(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
 		return
 	}
-
+	chatID := ctx.Update().FromChat().ID
 	text := strings.TrimSpace(ctx.Update().Message.Text)
 
 	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -125,12 +125,56 @@ func (c *Commands) MenuCategoryMenuHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 	lang := account.Language
-	backText := texts.Get(lang, texts.BackButton)
-	if strings.EqualFold(text, backText) {
-		_ = ctx.UpdateState("show_category", map[string]string{"last_action": "show_product"})
+	cats, err := c.CategorySvc.GetList(ctx.Context, structs.GetListCategoryRequest{
+		Search: texts.Get(lang, text),
+	})
+	if err != nil {
+		c.logger.Error(ctx.Context, "failed to get categories", zap.Error(err))
+		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
-	c.ProductInfo(ctx)
+
+	var keyboardRows [][]tgbotapi.KeyboardButton
+
+	var row []tgbotapi.KeyboardButton
+
+	for _, cat := range cats.Categories {
+		name := getCategoryNameByLang(lang, cat.Name)
+		btn := tgbotapi.NewKeyboardButton(name)
+		row = append(row, btn)
+		if len(row) == 2 {
+			keyboardRows = append(keyboardRows, row)
+			row = []tgbotapi.KeyboardButton{}
+		}
+	}
+	if len(row) > 0 {
+		keyboardRows = append(keyboardRows, row)
+	}
+	backText := texts.Get(lang, texts.BackButton)
+
+	backRow := tgbotapi.NewKeyboardButtonRow(
+		tgbotapi.NewKeyboardButton(backText),
+	)
+	keyboardRows = append(keyboardRows, backRow)
+
+	keyboard := tgbotapi.NewReplyKeyboard(keyboardRows...)
+
+	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
+	msg.ReplyMarkup = keyboard
+
+	ctx.Bot().Send(msg)
+	_ = ctx.UpdateState("category_selected", map[string]string{"last_action": "show_category"})
+}
+
+func getCategoryNameByLang(lang utils.Lang, name structs.Name) string {
+	switch lang {
+	case utils.UZ:
+		return name.Uz
+	case utils.RU:
+		return name.Ru
+	default:
+		return name.En
+	}
 }
 
 func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
@@ -146,7 +190,7 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 	resp, err := c.ProductSvc.GetByProductName(ctx.Context, text)
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get product name", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(utils.RU, texts.Retry)))
+		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
 	name := getProductNameByLang(lang, resp.Name)

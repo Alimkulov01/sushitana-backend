@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sushitana/apps/bot/commands/category"
+	"sushitana/apps/bot/commands/product"
 	"sushitana/internal/client"
 	"sushitana/internal/keyboards"
 	"sushitana/internal/structs"
@@ -24,22 +24,22 @@ var Module = fx.Provide(New)
 
 type Params struct {
 	fx.In
-	Logger      logger.Logger
-	ClientSvc   client.Service
-	CategoryCmd category.Commands
+	Logger     logger.Logger
+	ClientSvc  client.Service
+	ProductCmd product.Commands
 }
 
 type Commands struct {
-	logger      logger.Logger
-	ClientSvc   client.Service
-	CategoryCmd category.Commands
+	logger     logger.Logger
+	ClientSvc  client.Service
+	ProductCmd product.Commands
 }
 
 func New(p Params) Commands {
 	return Commands{
-		logger:      p.Logger,
-		ClientSvc:   p.ClientSvc,
-		CategoryCmd: p.CategoryCmd,
+		logger:     p.Logger,
+		ClientSvc:  p.ClientSvc,
+		ProductCmd: p.ProductCmd,
 	}
 }
 
@@ -55,7 +55,7 @@ func (c *Commands) Start(ctx *tgrouter.Ctx) {
 	})
 	if err != nil {
 		c.logger.Error(ctxWithTimeout, "failed to create client", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(utils.RU, texts.Retry)))
+		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(utils.UZ, texts.Retry)))
 		return
 	}
 
@@ -91,7 +91,7 @@ func (c *Commands) MainMenuHandler(ctx *tgrouter.Ctx) {
 		c.Contact(ctx)
 	case texts.Get(lang, texts.MenuButton):
 		_ = ctx.UpdateState("show_category", map[string]string{"last_action": "show_main_menu"})
-		c.CategoryCmd.MenuCategoryInfo(ctx)
+		c.ProductCmd.MenuCategoryMenuHandler(ctx)
 	default:
 		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))
 
@@ -201,7 +201,7 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	})
 
 	keyboard.ResizeKeyboard = true
-	keyboard.OneTimeKeyboard = false 
+	keyboard.OneTimeKeyboard = false
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Welcome))
 	msg.ReplyMarkup = keyboard
