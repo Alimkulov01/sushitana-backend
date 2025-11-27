@@ -1,28 +1,41 @@
 package structs
 
-type AuthRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
-}
-
-type User struct {
-	ID        int    `json:"id"`
+type Admin struct {
+	Id        string `json:"id"`
 	Username  string `json:"username"`
 	Password  string `json:"password"`
-	Role      string `json:"role"`
-	Ip        string
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	RoleId    string `json:"role_id"`
+	CreatedAt string `json:"created_at"`
 }
 
-type UserList struct {
-	Users []User `json:"users"`
-	Count int    `json:"count"`
+type AdminRequest struct {
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	RoleId      string `json:"role_id"`
+	PhoneNumber string `json:"phone_number"`
+	IsActive    bool   `json:"is_active"`
 }
 
-type Filter struct {
-	Search string `json:"search"`
-	Offset int    `json:"offset"`
-	Limit  int    `json:"limit"`
+type AdminLogin struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type AuthResponse struct {
+	Token string `json:"token"`
+}
+
+type AdminPrimaryKey struct {
+	Id string `json:"id"`
+}
+
+type GetMeResponse struct {
+	ID          string `json:"id"`
+	UserName    string `json:"username"`
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	Phone       string `json:"phone"`
+	Role        Role   `json:"role"`
+	LastLogin   string `json:"last_login"`
+	IsSuperUser bool   `json:"is_superuser"`
 }

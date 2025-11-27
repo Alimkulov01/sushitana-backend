@@ -42,6 +42,7 @@ func New(p Params) Commands {
 }
 
 func (c *Commands) CategoryByMenu(ctx *tgrouter.Ctx) {
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 	chatID := ctx.Update().FromChat().ID
 	text := strings.TrimSpace(ctx.Update().Message.Text)
 	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -51,9 +52,7 @@ func (c *Commands) CategoryByMenu(ctx *tgrouter.Ctx) {
 	}
 
 	lang := account.Language
-	products, err := c.ProductSvc.GetList(ctx.Context, structs.GetListProductRequest{
-		Search: texts.Get(lang, text),
-	})
+	products, err := c.ProductSvc.GetListCategoryName(ctx.Context, text)
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get products", zap.Error(err))
 		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
@@ -63,7 +62,7 @@ func (c *Commands) CategoryByMenu(ctx *tgrouter.Ctx) {
 
 	var row []tgbotapi.KeyboardButton
 
-	for _, prod := range products.Products {
+	for _, prod := range products {
 		name := getProductNameByLang(lang, prod.Name)
 		btn := tgbotapi.NewKeyboardButton(name)
 		row = append(row, btn)

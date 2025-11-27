@@ -3,6 +3,7 @@ package postgres
 import (
 	categoryrepo "sushitana/pkg/repository/postgres/category_repo"
 	clientRepo "sushitana/pkg/repository/postgres/client_repo"
+	filerepo "sushitana/pkg/repository/postgres/file_repo"
 	productRepo "sushitana/pkg/repository/postgres/product_repo"
 	userRepo "sushitana/pkg/repository/postgres/users_repo"
 
@@ -14,4 +15,5 @@ var Module = fx.Options(
 	clientRepo.Module,
 	categoryrepo.Module,
 	productRepo.Module,
+	filerepo.Module,
 )

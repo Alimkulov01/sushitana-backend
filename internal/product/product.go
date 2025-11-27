@@ -29,6 +29,7 @@ type (
 		GetByID(ctx context.Context, id int64) (structs.Product, error)
 		GetByProductName(ctx context.Context, name string) (structs.Product, error)
 		Patch(ctx context.Context, req structs.PatchProduct) (int64, error)
+		GetListCategoryName(ctx context.Context, req string) (resp []structs.Product, err error)
 	}
 	service struct {
 		productRepo productRepo.Repo
@@ -65,6 +66,15 @@ func (s service) GetList(ctx context.Context, req structs.GetListProductRequest)
 	return resp, err
 }
 
+func (s service) GetListCategoryName(ctx context.Context, req string) (resp []structs.Product, err error) {
+
+	resp, err = s.productRepo.GetListCategoryName(ctx, req)
+	if err != nil {
+		s.logger.Error(ctx, "->productRepo.GetList", zap.Error(err))
+		return nil, err
+	}
+	return resp, err
+}
 func (s service) Delete(ctx context.Context, id int64) error {
 	err := s.productRepo.Delete(ctx, id)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control/user"
+	"sushitana/apps/gateway/handlers/file"
 	"sushitana/apps/gateway/handlers/product"
 
 	"net/http"
@@ -35,6 +36,7 @@ type Params struct {
 	Client    client.Handler
 	Category  category.Handler
 	Product   product.Handler
+	File      file.Handler
 }
 
 func NewRouter(params Params) {
@@ -43,40 +45,41 @@ func NewRouter(params Params) {
 	baseUrl := "/api/v1"
 	out := r.Group(baseUrl)
 	out.Use(params.Ctx(), gin.Logger(), gin.Recovery())
+	permissionMiddleware := middleware.EndpointPermissionMiddleware(params.Middleware)
 
+	adminGroup := out.Group("/admin")
 	{
-		out.POST("/user/login", params.User.LogIn)
+		adminGroup.POST("/login", params.User.LoginAdmin)
+		adminGroup.GET("/self", params.User.GetMe)
+		adminGroup.GET("/permissions", params.User.GetUserPermissions)
 	}
 
-	adminGroup := out.Group("/admin",
-		params.CheckAuth(),
-	)
-	{
-		adminGroup.DELETE("/user/logout", params.User.LogOut)
-		adminGroup.GET("/user/profile", params.User.Profile)
-		adminGroup.POST("/user", params.User.Create)
-		adminGroup.DELETE("/user/:id", params.User.Delete)
-		adminGroup.GET("/user/:id", params.User.GetUserById)
-		adminGroup.GET("/user/list", params.User.GetAll)
-	}
-	categoryGroup := out.Group("/category",
-		params.CheckAuth(),
-	)
+	api := r.Group(baseUrl)
+	api.Use(params.Ctx(), gin.Logger(), gin.Recovery())
+	api.Use(permissionMiddleware)
+	categoryGroup := api.Group("/category")
 	{
 		categoryGroup.POST("/", params.Category.CreateCategory)
 		categoryGroup.GET("/:id", params.Category.GetByIDCategory)
-		categoryGroup.GET("/", params.Category.GetListCategory)
+		out.GET("/category", params.Category.GetListCategory)
 		categoryGroup.PATCH("/:id", params.Category.PatchCategory)
 		categoryGroup.DELETE("/:id", params.Category.DeleteCategory)
 	}
-	productGroup := out.Group("/product") // params.CheckAuth(),
-
+	productGroup := api.Group("/product")
 	{
 		productGroup.POST("/", params.Product.CreateProduct)
 		productGroup.GET("/:id", params.Product.GetByIDProduct)
-		productGroup.GET("/", params.Product.GetListProduct)
+		out.GET("/product", params.Product.GetListProduct)
 		productGroup.PATCH("/:id", params.Product.PatchProduct)
 		productGroup.DELETE("/:id", params.Product.DeleteProduct)
+	}
+	fileGroup := api.Group("file")
+	{
+		fileGroup.POST("/", params.File.CreateFile)
+		fileGroup.GET("/", params.File.GetListFile)
+		out.GET("/file/:id", params.File.GetByIDFile)
+		fileGroup.GET("/image", params.File.GetImage)
+		fileGroup.DELETE("/:id", params.File.DeleteFile)
 	}
 
 	server := http.Server{

@@ -2,20 +2,16 @@ package userRepo
 
 import (
 	"context"
-	"errors"
+	"database/sql"
 	"fmt"
-	"time"
-
+	"strings"
 	"sushitana/internal/structs"
 	"sushitana/pkg/db"
 	"sushitana/pkg/logger"
 	"sushitana/pkg/utils"
 
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -30,13 +26,9 @@ type (
 	}
 
 	Repo interface {
-		GetUserByUsername(ctx context.Context, username string) (user structs.User, err error)
-		GetUserWithPolicyByUsername(ctx context.Context, username string) (user structs.User, err error)
-		GetUserByID(ctx context.Context, id int) (user structs.User, err error)
-		Create(ctx context.Context, user structs.User) (id int, err error)
-		GetUsers(ctx context.Context, request structs.Filter) (structs.UserList, error)
-		Delete(ctx context.Context, id int) error
-		TokenUser(ctx context.Context, login, token string) error
+		LoginAdmin(ctx context.Context, req structs.AdminLogin) (structs.AuthResponse, error)
+		GetMe(ctx context.Context, token string) (structs.GetMeResponse, error)
+		GetUserPermissions(ctx context.Context, role_id string) ([]string, error)
 	}
 
 	repo struct {
@@ -52,231 +44,168 @@ func New(p Params) Repo {
 	}
 }
 
-func (r repo) GetUserByUsername(ctx context.Context, username string) (user structs.User, err error) {
-	return r.selectUser(ctx, `u.username = $1`, username)
-}
-
-func (r repo) GetUserWithPolicyByUsername(ctx context.Context, username string) (user structs.User, err error) {
+func (r repo) LoginAdmin(ctx context.Context, req structs.AdminLogin) (structs.AuthResponse, error) {
 
 	var (
-		createdAt time.Time
+		query = `
+            SELECT
+                id,
+                password_hash,
+				role_id
+            FROM admins
+            WHERE username = $1
+        `
+		id       sql.NullString
+		password sql.NullString
+		role_id  sql.NullString
 	)
-
-	err = r.db.QueryRow(ctx, `
-	select 
-		u.id,
-		username,
-		password_hash,
-		role,
-	   	u.created_at
-	from users u
-	where username = $1
-	GROUP BY u.id`, username).Scan(
-		&user.ID,
-		&user.Username,
-		&user.Password,
-		&user.Role,
-		&createdAt)
+	err := r.db.QueryRow(ctx, query, req.Username).Scan(
+		&id,
+		&password,
+		&role_id,
+	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return user, structs.ErrNotFound
-		}
-		r.logger.Error(ctx, " err from r.db.QueryRow", zap.Error(err))
-		return user, err
+		return structs.AuthResponse{}, fmt.Errorf("login or password error: %w", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(password.String), []byte(req.Password)); err != nil {
+		return structs.AuthResponse{}, fmt.Errorf("invalid credentials: %w", err)
 	}
 
-	user.CreatedAt = createdAt.Format(utils.Layout)
+	token, err := utils.GenerateJWT(id.String, role_id.String)
+	if err != nil {
+		return structs.AuthResponse{}, fmt.Errorf("generate jwt token error: %w", err)
+	}
+	_, err = r.db.Exec(ctx, `UPDATE admins SET last_login = NOW() WHERE id = $1`, id.String)
+	if err != nil {
+		return structs.AuthResponse{}, fmt.Errorf("failed to update last login: %w", err)
+	}
 
-	return user, nil
+	return structs.AuthResponse{
+		Token: token,
+	}, nil
 }
 
-func (r repo) GetUserByID(ctx context.Context, id int) (user structs.User, err error) {
+func (r repo) GetMe(ctx context.Context, token string) (structs.GetMeResponse, error) {
+	token = strings.TrimPrefix(token, "Bearer ")
+	claims, err := utils.ParseJWT(token)
+	if err != nil {
+		return structs.GetMeResponse{}, err
+	}
+	adminID, _ := claims["id"].(string)
 
-	r.logger.Info(ctx, "GetUserByID", zap.Int("id", id))
-
-	return r.selectUser(ctx, `u.id = $1`, id)
-}
-
-func (r repo) selectUser(ctx context.Context, c string, v ...interface{}) (user structs.User, err error) {
-	var (
-		createdAt time.Time
-		updatedAt time.Time
-	)
-
-	err = r.db.QueryRow(ctx, fmt.Sprintf(`
+	const query = `
 		SELECT
-			u.id,
-			u.username,
-			u.password_hash,
-			u.role,
-			u.created_at,
-			u.updated_at
-		FROM users u WHERE %s`, c), v...).Scan(
-		&user.ID,
-		&user.Username,
-		&user.Password,
-		&user.Role,
-		&createdAt,
-		&updatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return user, structs.ErrNotFound
-		}
-		r.logger.Error(ctx, " err from r.db.QueryRow", zap.Error(err))
-		return user, err
-	}
+			COALESCE(e.id::text, a.id::text)                             AS id,
+			COALESCE(e.username, a.username)                             AS username,
+			e.surname                                                    AS last_name,
+			e.name                                                       AS first_name,
+			e.phone_number                                               AS phone_number,
+			a.last_login,
+			a.is_superuser,
+			r.id::text                                                   AS role_id,
+			r.role_name,
+			r.role_description,
+			r.created_at,
+			r.updated_at
+		FROM admins a
+		LEFT JOIN employees e ON e.username = a.username
+		JOIN roles r ON r.id = a.role_id
+		WHERE a.id = $1
+	`
 
-	user.CreatedAt = createdAt.Format(utils.Layout)
-	user.UpdatedAt = updatedAt.Format(utils.Layout)
+	const queryAccessScope = `
+		SELECT s.id, s.name, s.description
+		FROM access_scopes s
+		JOIN role_access_scopes ras ON ras.access_scope_id = s.id
+		WHERE ras.role_id = $1
+	`
 
-	return user, nil
-}
-
-func (r repo) Create(ctx context.Context, user structs.User) (id int, err error) {
-	var pgErr = &pgconn.PgError{}
-
-	err = r.db.QueryRow(ctx, `
-		insert into users (
-			username,
-			password_hash,
-			role) VALUES ($1, $2, $3) RETURNING id`,
-		user.Username,
-		user.Password,
-		user.Role,
-	).Scan(&id)
-	if err != nil {
-		errors.As(err, &pgErr)
-		if pgerrcode.UniqueViolation == pgErr.Code {
-			return 0, structs.ErrUniqueViolation
-		}
-		r.logger.Error(ctx, " err on r.db.Exec", zap.Error(err))
-		return 0, err
-	}
-
-	return id, nil
-}
-
-func (r repo) updateUser(ctx context.Context, set, where string, v ...interface{}) error {
-	exec, err := r.db.Exec(ctx, fmt.Sprintf(`update users set %s, updated_at = now() where %s;`, set, where), v...)
-	if err != nil {
-		r.logger.Error(ctx, " err on r.db.Exec", zap.Error(err))
-		return err
-	}
-
-	if exec.RowsAffected() == 0 {
-		return structs.ErrNoRowsAffected
-	}
-
-	return nil
-}
-
-func (r repo) GetUsers(ctx context.Context, filter structs.Filter) (list structs.UserList, err error) {
 	var (
-		inc     int
-		params  []interface{}
-		pages   string
-		_filter = " WHERE 1=1"
-		order   = " ORDER BY u.id DESC"
+		id, username, lastName, firstName, phoneNumber sql.NullString
+		lastLogin, roleID, roleName, roleDesc          sql.NullString
+		roleCreatedAt, roleUpdatedAt                   sql.NullString
+		isSuperuser                                    sql.NullBool
 	)
 
-	if !utils.StrEmpty(filter.Search) {
-		_filter += fmt.Sprintf(` AND (u.username) ILIKE ('%s' || $%d || '%s')`, "%", utils.Increment(&inc), "%")
-		params = append(params, filter.Search)
+	if err := r.db.QueryRow(ctx, query, adminID).Scan(
+		&id, &username, &lastName, &firstName, &phoneNumber,
+		&lastLogin, &isSuperuser,
+		&roleID, &roleName, &roleDesc, &roleCreatedAt, &roleUpdatedAt,
+	); err != nil {
+		return structs.GetMeResponse{}, err
 	}
 
-	if filter.Limit > 0 {
-		pages += fmt.Sprintf(" LIMIT $%d ", utils.Increment(&inc))
-		params = append(params, filter.Limit)
-	}
-
-	if filter.Offset >= 0 {
-		pages += fmt.Sprintf(" OFFSET $%d", utils.Increment(&inc))
-		params = append(params, filter.Offset)
-	}
-
-	counter := fmt.Sprintf("(SELECT COUNT(u.id) FROM users u %s)", _filter)
-	query := fmt.Sprintf(`
-	SELECT 
-		u.id,
-		u.username,
-		u.password_hash,
-		u.role,
-		u.created_at,
-		u.updated_at
-		%s
-	 FROM users u  
-	 %s GROUP BY u.id %s`, counter, _filter, order)
-
-	rows, err := r.db.Query(ctx, query+pages, params...)
+	rows, err := r.db.Query(ctx, queryAccessScope, roleID.String)
 	if err != nil {
-		r.logger.Error(ctx, " err on r.db.Query", zap.Error(err))
-		return list, err
+		return structs.GetMeResponse{}, err
 	}
 	defer rows.Close()
 
-	var users []structs.User
-
+	var accessScopes []structs.AccessScope
 	for rows.Next() {
-		user := structs.User{}
-		var createdAt time.Time
-		var updatedAt time.Time
-
-		err := rows.Scan(
-			&user.ID,
-			&user.Username,
-			&user.Password,
-			&user.Role,
-			&createdAt,
-			&updatedAt,
-			&list.Count,
-		)
-
-		user.CreatedAt = createdAt.Format(utils.Layout)
-		user.UpdatedAt = updatedAt.Format(utils.Layout)
-
-		if err != nil {
-			r.logger.Error(ctx, " err on rows.Scan", zap.Error(err))
-			return list, err
+		var s structs.AccessScope
+		if err := rows.Scan(&s.Id, &s.Name, &s.Description); err != nil {
+			return structs.GetMeResponse{}, err
 		}
-
-		users = append(users, user)
+		accessScopes = append(accessScopes, s)
+	}
+	if err := rows.Err(); err != nil {
+		return structs.GetMeResponse{}, err
 	}
 
-	list.Users = users
-
-	return list, nil
+	return structs.GetMeResponse{
+		ID:          id.String,
+		UserName:    username.String,
+		FirstName:   firstName.String,
+		LastName:    lastName.String,
+		Phone:       phoneNumber.String,
+		LastLogin:   lastLogin.String,
+		IsSuperUser: isSuperuser.Bool,
+		Role: structs.Role{
+			Id:              roleID.String,
+			RoleName:        roleName.String,
+			RoleDescription: roleDesc.String,
+			CreatedAt:       roleCreatedAt.String,
+			UpdatedAt:       roleUpdatedAt.String,
+			AccessScopes:    accessScopes,
+		},
+	}, nil
 }
 
-func (r repo) Delete(ctx context.Context, id int) error {
-	exec, err := r.db.Exec(ctx, `delete from users where id = $1`, id)
+func (r repo) GetUserPermissions(ctx context.Context, token string) ([]string, error) {
+	token = strings.TrimPrefix(token, "Bearer ")
+	claims, err := utils.ParseJWT(token)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return structs.ErrNotFound
-		}
-		r.logger.Error(ctx, " err on r.db.Exec", zap.Error(err))
-		return err
+		return nil, fmt.Errorf("invalid token: %w", err)
 	}
 
-	if exec.RowsAffected() == 0 {
-		return structs.ErrNoRowsAffected
+	roleID, ok := claims["role_id"].(string)
+	if !ok || roleID == "" {
+		return nil, fmt.Errorf("role_id not found in token")
 	}
-
-	return nil
-}
-
-func (r repo) TokenUser(ctx context.Context, login, token string) error {
 	var (
 		query = `
-			UPDATE users
-				SET
-					token = $2
-				WHERE login = $1
+			SELECT 
+				access_scopes.name 
+			FROM role_access_scopes
+			JOIN access_scopes ON role_access_scopes.access_scope_id = access_scopes.id
+			WHERE role_access_scopes.role_id = $1
 		`
 	)
-	_, err := r.db.Exec(ctx, query, login, token)
+	rows, err := r.db.Query(ctx, query, roleID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	defer rows.Close()
+
+	var permissions []string
+	for rows.Next() {
+		var permission string
+		if err := rows.Scan(&permission); err != nil {
+			return nil, err
+		}
+		permissions = append(permissions, permission)
+	}
+
+	return permissions, nil
 }

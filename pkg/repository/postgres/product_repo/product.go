@@ -32,6 +32,7 @@ type (
 		GetList(ctx context.Context, req structs.GetListProductRequest) (structs.GetListProductResponse, error)
 		Delete(ctx context.Context, ProductID int64) error
 		Patch(ctx context.Context, req structs.PatchProduct) (int64, error)
+		GetListCategoryName(ctx context.Context, req string) ([]structs.Product, error)
 	}
 
 	repo struct {
@@ -347,4 +348,66 @@ func (r *repo) Delete(ctx context.Context, productID int64) error {
 	}
 
 	return nil
+}
+
+func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []structs.Product, err error) {
+	r.logger.Info(ctx, "GetList Product by category name", zap.Any("req", req))
+
+	pattern := "%" + req + "%"
+
+	query := `
+		SELECT
+			p.id,
+			p.name,
+			p.category_id,
+			p.img_url,
+			p.price,
+			p.count,
+			p.decription,
+			p.is_active,
+			p.created_at,
+			p.updated_at
+		FROM product AS p
+		JOIN category AS c ON c.id = p.category_id
+		WHERE c.name->>'uz' ILIKE $1 OR
+			  c.name->>'ru' ILIKE $1 OR
+			  c.name->>'en' ILIKE $1
+		ORDER BY p.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, pattern)
+	if err != nil {
+		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
+		return resp, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var list []structs.Product
+
+	for rows.Next() {
+		var p structs.Product
+		err := rows.Scan(
+			&p.ID,
+			&p.Name,
+			&p.CategoryID,
+			&p.ImgUrl,
+			&p.Price,
+			&p.Count,
+			&p.Description,
+			&p.IsActive,
+			&p.CreatedAt,
+			&p.UpdatedAt,
+		)
+		if err != nil {
+			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
+			return resp, fmt.Errorf("row scan failed: %w", err)
+		}
+		list = append(list, p)
+	}
+
+	if rows.Err() != nil {
+		r.logger.Error(ctx, "err on rows iteration", zap.Error(rows.Err()))
+		return resp, fmt.Errorf("rows iteration failed: %w", rows.Err())
+	}
+	return list, nil
 }

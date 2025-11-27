@@ -4,6 +4,7 @@ import (
 	category "sushitana/internal/category"
 	client "sushitana/internal/client"
 	control "sushitana/internal/control"
+	"sushitana/internal/file"
 	"sushitana/internal/product"
 
 	"go.uber.org/fx"
@@ -14,4 +15,5 @@ var Module = fx.Options(
 	control.Module,
 	category.Module,
 	product.Module,
+	file.Module,
 )

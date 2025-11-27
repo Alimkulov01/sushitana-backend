@@ -70,7 +70,6 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	switch text {
 	case texts.Get(lang, texts.BackButton):
 		_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "show_category"})
-		c.ShowMainMenu(ctx)
 		return
 	default:
 		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))

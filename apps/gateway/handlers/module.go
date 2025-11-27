@@ -4,6 +4,7 @@ import (
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control"
+	"sushitana/apps/gateway/handlers/file"
 	"sushitana/apps/gateway/handlers/middleware"
 	"sushitana/apps/gateway/handlers/product"
 
@@ -16,4 +17,5 @@ var Module = fx.Options(
 	client.Module,
 	category.Module,
 	product.Module,
+	file.Module,
 )
