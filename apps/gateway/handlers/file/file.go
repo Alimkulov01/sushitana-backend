@@ -52,43 +52,23 @@ func (h *handler) CreateFile(c *gin.Context) {
 	var (
 		response structs.Response
 		ctx      = c.Request.Context()
+		req      structs.CreateImage
 	)
 
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
-	imageType := c.PostForm("image_type")
-	if imageType == "" {
-		h.logger.Warn(ctx, "image_type is required")
-		response = responses.BadRequest
-		return
+	file, err := c.FormFile("image")
+	if err == nil {
+		imageUrl, err := utils.UploadImage(file, req.ImageType)
+		if err != nil {
+			h.logger.Error(ctx, "upload image error", zap.Error(err))
+			response = responses.InternalErr
+			return
+		}
+		req.Image = imageUrl
 	}
-
-	fileHeader, err := c.FormFile("image")
-	if err != nil {
-		h.logger.Warn(ctx, "file is missing", zap.Error(err))
-		response = responses.BadRequest
-		return
-	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		h.logger.Error(ctx, "failed to open file", zap.Error(err))
-		response = responses.InternalErr
-		return
-	}
-	defer file.Close()
-
-	publicURL, err := utils.UploadMultipartFile(file, fileHeader.Filename, imageType)
-	if err != nil {
-		h.logger.Error(ctx, "failed to upload to s3", zap.Error(err))
-		response = responses.InternalErr
-		return
-	}
-
-	created, err := h.fileService.Create(c, structs.CreateImage{
-		ImageType: imageType,
-		Image:     publicURL,
-	})
+	req.ImageType = c.PostForm("image_type")
+	created, err := h.fileService.Create(c, req)
 	if err != nil {
 		h.logger.Error(ctx, "db create error", zap.Error(err))
 		response = responses.InternalErr
