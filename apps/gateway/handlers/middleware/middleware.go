@@ -158,6 +158,12 @@ func getRequiredPermission(endpoint string, method string) string {
 		resource = "product"
 	} else if strings.Contains(endpoint, "/category") {
 		resource = "category"
+	} else if strings.Contains(endpoint, "/file") {
+		resource = "file"
+	} else if strings.Contains(endpoint, "/role") {
+		resource = "role"
+	} else if strings.Contains(endpoint, "/employee") {
+		resource = "employee"
 	} else {
 		return ""
 	}

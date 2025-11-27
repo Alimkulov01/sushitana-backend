@@ -4,9 +4,11 @@ import (
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control"
+	"sushitana/apps/gateway/handlers/employee"
 	"sushitana/apps/gateway/handlers/file"
 	"sushitana/apps/gateway/handlers/middleware"
 	"sushitana/apps/gateway/handlers/product"
+	"sushitana/apps/gateway/handlers/role"
 
 	"go.uber.org/fx"
 )
@@ -18,4 +20,6 @@ var Module = fx.Options(
 	category.Module,
 	product.Module,
 	file.Module,
+	role.Module,
+	employee.Module,
 )

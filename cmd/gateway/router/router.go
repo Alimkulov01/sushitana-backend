@@ -5,8 +5,10 @@ import (
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control/user"
+	"sushitana/apps/gateway/handlers/employee"
 	"sushitana/apps/gateway/handlers/file"
 	"sushitana/apps/gateway/handlers/product"
+	"sushitana/apps/gateway/handlers/role"
 
 	"net/http"
 	"sushitana/apps/gateway/handlers/middleware"
@@ -37,6 +39,8 @@ type Params struct {
 	Category  category.Handler
 	Product   product.Handler
 	File      file.Handler
+	Role      role.Handler
+	Employee  employee.Handler
 }
 
 func NewRouter(params Params) {
@@ -80,6 +84,22 @@ func NewRouter(params Params) {
 		out.GET("/file/:id", params.File.GetByIDFile)
 		fileGroup.GET("/image", params.File.GetImage)
 		fileGroup.DELETE("/:id", params.File.DeleteFile)
+	}
+	roleGroup := api.Group("/role")
+	{
+		roleGroup.POST("/", params.Role.CreateRole)
+		roleGroup.GET("/", params.Role.GetListRole)
+		roleGroup.GET("/:id", params.Role.GetByIDRole)
+		roleGroup.DELETE("/:id", params.Role.DeleteRole)
+		roleGroup.PATCH("/:id", params.Role.PatchRole)
+	}
+	employeeGroup := api.Group("/employee")
+	{
+		employeeGroup.POST("/", params.Employee.CreateEmployee)
+		employeeGroup.GET("/", params.Employee.GetListEmployee)
+		employeeGroup.GET("/:id", params.Employee.GetByIDEmployee)
+		employeeGroup.DELETE("/:id", params.Employee.DeleteEmployee)
+		employeeGroup.PATCH("/:id", params.Employee.PatchEmployee)
 	}
 
 	server := http.Server{
