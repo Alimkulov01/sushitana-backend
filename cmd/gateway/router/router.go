@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control/user"
@@ -45,7 +46,7 @@ type Params struct {
 
 func NewRouter(params Params) {
 	r := gin.New()
-
+	fmt.Println("start")
 	baseUrl := "/api/v1"
 	out := r.Group(baseUrl)
 	out.Use(params.Ctx(), gin.Logger(), gin.Recovery())
