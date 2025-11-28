@@ -58,9 +58,13 @@ func (r *repo) Create(ctx context.Context, req structs.CreateProduct) (resp stru
 			price,
 			count,
 			decription,
-			is_active
-		) VALUES($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, name, category_id, img_url, price, count, description, is_active, created_at, updated_at
+			is_active,
+			index,
+			is_new,
+			discount_price,
+			post_id
+		) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id, name, category_id, img_url, price, count, description, is_active, index, is_new, discount_price, post_id, created_at, updated_at
 	`
 	err = r.db.QueryRow(ctx, query, req.Name, req.CategoryID, req.ImgUrl, req.Price, req.Count, req.Description, req.IsActive).Scan(
 		&resp.ID,
@@ -94,6 +98,10 @@ func (r *repo) GetByID(ctx context.Context, id int64) (structs.Product, error) {
 				count,
 				decription,
 				is_active,
+				index,
+				is_new,
+				discount_price,
+				post_id,
 				created_at,
 				updated_at
 			FROM product
@@ -109,6 +117,10 @@ func (r *repo) GetByID(ctx context.Context, id int64) (structs.Product, error) {
 		&resp.Count,
 		&resp.Description,
 		&resp.IsActive,
+		&resp.Index,
+		&resp.IsNew,
+		&resp.DiscountPrice,
+		&resp.PostID,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
 	)
@@ -136,6 +148,10 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 			count,
 			decription,
 			is_active,
+			index,
+			is_new,
+			discount_price,
+			post_id,
 			created_at,
 			updated_at
 		FROM product
@@ -155,6 +171,10 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 		&resp.Count,
 		&resp.Description,
 		&resp.IsActive,
+		&resp.Index,
+		&resp.IsNew,
+		&resp.DiscountPrice,
+		&resp.PostID,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
 	)
@@ -203,6 +223,10 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 			count,
 			decription,
 			is_active,
+			index,
+			is_new,
+			discount_price,
+			post_id,
 			created_at,
 			updated_at
 		FROM product
@@ -231,6 +255,10 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 			&p.Count,
 			&p.Description,
 			&p.IsActive,
+			&p.Index,
+			&p.IsNew,
+			&p.DiscountPrice,
+			&p.PostID,
 			&p.CreatedAt,
 			&p.UpdatedAt,
 		)
@@ -282,6 +310,22 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchProduct) (int64, erro
 	if req.IsActive != nil {
 		setValues = append(setValues, "is_active = :is_active")
 		params["is_active"] = *req.IsActive
+	}
+	if req.Index != nil {
+		setValues = append(setValues, "index = :index")
+		params["index"] = *req.Index
+	}
+	if req.IsNew != nil {
+		setValues = append(setValues, "is_new = :is_new")
+		params["is_new"] = *req.IsNew
+	}
+	if req.DiscountPrice != nil {
+		setValues = append(setValues, "discount_price = :discount_price")
+		params["discount_price"] = *req.DiscountPrice
+	}
+	if req.PostID != nil {
+		setValues = append(setValues, "post_id = :post_id")
+		params["post_id"] = *req.PostID
 	}
 	setValues = append(setValues, "updated_At = NOW()")
 	if len(setValues) == 0 {
@@ -365,6 +409,10 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 			p.count,
 			p.decription,
 			p.is_active,
+			p.index,
+			p.is_new,
+			p.discount_price,
+			p.post_id,
 			p.created_at,
 			p.updated_at
 		FROM product AS p
@@ -395,6 +443,10 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 			&p.Count,
 			&p.Description,
 			&p.IsActive,
+			&p.Index,
+			&p.IsNew,
+			&p.DiscountPrice,
+			&p.PostID,
 			&p.CreatedAt,
 			&p.UpdatedAt,
 		)

@@ -3,16 +3,20 @@ package structs
 import "time"
 
 type Product struct {
-	ID          int64       `json:"id"`
-	Name        Name        `json:"name"`
-	CategoryID  int64       `json:"category_id"`
-	ImgUrl      string      `json:"img_url"`
-	Price       int64       `json:"price"`
-	Count       int64       `json:"count"`
-	Description Description `json:"description"`
-	IsActive    bool        `json:"is_active"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID            int64       `json:"id"`
+	Name          Name        `json:"name"`
+	CategoryID    int64       `json:"category_id"`
+	ImgUrl        string      `json:"img_url"`
+	Price         int64       `json:"price"`
+	Count         int64       `json:"count"`
+	Description   Description `json:"description"`
+	IsActive      bool        `json:"is_active"`
+	Index         string      `json:"index"`
+	IsNew         bool        `json:"is_new"`
+	DiscountPrice int64       `json:"discount_price"`
+	PostID        string      `json:"post_id"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
 type Description struct {
@@ -22,13 +26,17 @@ type Description struct {
 }
 
 type CreateProduct struct {
-	Name        Name        `json:"name"`
-	CategoryID  int64       `json:"category_id"`
-	ImgUrl      string      `json:"img_url"`
-	Price       int64       `json:"price"`
-	Count       int64       `json:"count"`
-	Description Description `json:"description"`
-	IsActive    bool        `json:"is_active"`
+	Name          Name        `json:"name"`
+	CategoryID    int64       `json:"category_id"`
+	ImgUrl        string      `json:"img_url"`
+	Price         int64       `json:"price"`
+	Count         int64       `json:"count"`
+	Description   Description `json:"description"`
+	IsActive      bool        `json:"is_active"`
+	Index         string      `json:"index"`
+	IsNew         bool        `json:"is_new"`
+	DiscountPrice int64       `json:"discount_price"`
+	PostID        string      `json:"post_id"`
 }
 
 type GetListProductRequest struct {
@@ -43,12 +51,16 @@ type GetListProductResponse struct {
 }
 
 type PatchProduct struct {
-	ID          int64        `json:"id"`
-	Name        *Name        `json:"name"`
-	CategoryID  *int64       `json:"category_id"`
-	ImgUrl      *string      `json:"img_url"`
-	Price       *int64       `json:"price"`
-	Count       *int64       `json:"count"`
-	Description *Description `json:"description"`
-	IsActive    *bool        `json:"is_active"`
+	ID            int64        `json:"id"`
+	Name          *Name        `json:"name"`
+	CategoryID    *int64       `json:"category_id"`
+	ImgUrl        *string      `json:"img_url"`
+	Price         *int64       `json:"price"`
+	Count         *int64       `json:"count"`
+	Description   *Description `json:"description"`
+	IsActive      *bool        `json:"is_active"`
+	Index         *string      `json:"index"`
+	IsNew         *bool        `json:"is_new"`
+	DiscountPrice *int64       `json:"discount_price"`
+	PostID        *string      `json:"post_id"`
 }

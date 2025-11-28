@@ -26,6 +26,7 @@ type (
 		LoginAdmin(ctx context.Context, req structs.AdminLogin) (structs.AuthResponse, error)
 		GetMe(ctx context.Context, token string) (structs.GetMeResponse, error)
 		GetUserPermissions(ctx context.Context, token string) ([]string, error)
+		CreateAdmin(ctx context.Context, username, password, role_id string) error
 	}
 
 	Service interface {
@@ -59,6 +60,9 @@ func New(p Params) Service {
 		userRepo: p.UserRepo,
 	}
 }
+func (s service) CreateAdmin(ctx context.Context, username, password, role_id string) error {
+	return s.userRepo.CreateAdmin(ctx, username, password, role_id)
+}
 
 func (s service) LoginAdmin(ctx context.Context, req structs.AdminLogin) (structs.AuthResponse, error) {
 	token, err := s.userRepo.LoginAdmin(ctx, req)
@@ -66,7 +70,7 @@ func (s service) LoginAdmin(ctx context.Context, req structs.AdminLogin) (struct
 		if errors.Is(err, structs.ErrNotFound) {
 			return structs.AuthResponse{}, structs.ErrBadRequest
 		}
-		s.logger.Error(ctx, " err on s.userRepo.GetUserWithPolicyByLogin", zap.Error(err))
+		s.logger.Error(ctx, " err on s.userRepo.LoginAdmin", zap.Error(err))
 		return structs.AuthResponse{}, err
 	}
 

@@ -33,6 +33,7 @@ type (
 		GetAll(ctx context.Context, req structs.GetListRoleRequest) (structs.GetListRoleResponse, error)
 		Delete(ctx context.Context, req structs.RolePrimaryKey) error
 		Patch(ctx context.Context, req structs.PatchRole) (int64, error)
+		GetAccessScope(ctx context.Context) ([]structs.AccessScope, error)
 	}
 
 	repo struct {

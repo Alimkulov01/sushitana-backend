@@ -29,6 +29,7 @@ type (
 		LoginAdmin(ctx context.Context, req structs.AdminLogin) (structs.AuthResponse, error)
 		GetMe(ctx context.Context, token string) (structs.GetMeResponse, error)
 		GetUserPermissions(ctx context.Context, role_id string) ([]string, error)
+		CreateAdmin(ctx context.Context, username, password, role_id string) error
 	}
 
 	repo struct {
@@ -42,6 +43,25 @@ func New(p Params) Repo {
 		logger: p.Logger,
 		db:     p.DB,
 	}
+}
+
+func (c repo) CreateAdmin(ctx context.Context, username, password, role_id string) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	const query = `
+		INSERT INTO admins (id, username, password_hash, role_id, created_at)
+		VALUES ($1, $2, $3, $4, NOW())
+	`
+
+	_, err = c.db.Exec(ctx, query, "00e1bd9b-d2f6-490a-b706-98b5657c064f", username, string(hashedPassword), role_id)
+	if err != nil {
+		return fmt.Errorf("failed to create admin: %w", err)
+	}
+
+	return nil
 }
 
 func (r repo) LoginAdmin(ctx context.Context, req structs.AdminLogin) (structs.AuthResponse, error) {

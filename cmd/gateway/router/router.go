@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"sushitana/apps/gateway/handlers/cart"
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control/user"
@@ -41,6 +42,7 @@ type Params struct {
 	File      file.Handler
 	Role      role.Handler
 	Employee  employee.Handler
+	Cart      cart.Handler
 }
 
 func NewRouter(params Params) {
@@ -49,9 +51,9 @@ func NewRouter(params Params) {
 	out := r.Group(baseUrl)
 	out.Use(params.Ctx(), gin.Logger(), gin.Recovery())
 	permissionMiddleware := middleware.EndpointPermissionMiddleware(params.Middleware)
-
 	adminGroup := out.Group("/admin")
 	{
+		// adminGroup.POST("/create", params.User.CreateAdmin)
 		adminGroup.POST("/login", params.User.LoginAdmin)
 		adminGroup.GET("/self", params.User.GetMe)
 		adminGroup.GET("/permissions", params.User.GetUserPermissions)
@@ -91,6 +93,7 @@ func NewRouter(params Params) {
 		roleGroup.GET("/:id", params.Role.GetByIDRole)
 		roleGroup.DELETE("/:id", params.Role.DeleteRole)
 		roleGroup.PATCH("/:id", params.Role.PatchRole)
+		roleGroup.GET("/access_scope", params.Role.GetAccessScope)
 	}
 	employeeGroup := api.Group("/employee")
 	{
@@ -99,6 +102,14 @@ func NewRouter(params Params) {
 		employeeGroup.GET("/:id", params.Employee.GetByIDEmployee)
 		employeeGroup.DELETE("/:id", params.Employee.DeleteEmployee)
 		employeeGroup.PATCH("/:id", params.Employee.PatchEmployee)
+	}
+	cartGroup := out.Group("/cart")
+	{
+		cartGroup.POST("/", params.Cart.CreateCart)
+		cartGroup.DELETE("/:id", params.Cart.ClearCart)
+		cartGroup.DELETE("/", params.Cart.DeleteCart)
+		cartGroup.PATCH("/", params.Cart.PatchCart)
+		cartGroup.GET("/:id", params.Cart.GetByTgID)
 	}
 
 	server := http.Server{

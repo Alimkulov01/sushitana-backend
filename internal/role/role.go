@@ -28,6 +28,7 @@ type (
 		GetAll(ctx context.Context, req structs.GetListRoleRequest) (structs.GetListRoleResponse, error)
 		Delete(ctx context.Context, req structs.RolePrimaryKey) error
 		Patch(ctx context.Context, req structs.PatchRole) (int64, error)
+		GetAccessScope(ctx context.Context) ([]structs.AccessScope, error)
 	}
 	service struct {
 		roleRepo roleRepo.Repo
@@ -91,4 +92,13 @@ func (s service) Patch(ctx context.Context, req structs.PatchRole) (int64, error
 		return rowsAffected, err
 	}
 	return rowsAffected, err
+}
+
+func (s service) GetAccessScope(ctx context.Context) ([]structs.AccessScope, error) {
+	resp, err := s.roleRepo.GetAccessScope(ctx)
+	if err != nil {
+		s.logger.Error(ctx, "->roleRepo.GetAccessScope", zap.Error(err))
+		return []structs.AccessScope{}, err
+	}
+	return resp, err
 }

@@ -24,6 +24,7 @@ type (
 		LoginAdmin(c *gin.Context)
 		GetMe(c *gin.Context)
 		GetUserPermissions(c *gin.Context)
+		CreateAdmin(c *gin.Context)
 	}
 	Params struct {
 		fx.In
@@ -42,6 +43,36 @@ func New(p Params) Handler {
 		logger:      p.Logger,
 		userService: p.UserService,
 	}
+}
+
+func (h *handler) CreateAdmin(c *gin.Context) {
+	var (
+		response structs.Response
+		request  struct {
+			Username string `json:"username" binding:"required"`
+			Password string `json:"password" binding:"required"`
+			RoleID   string `json:"role_id" binding:"required"`
+		}
+		ctx = c.Request.Context()
+	)
+
+	defer reply.Json(c.Writer, http.StatusOK, &response)
+
+	err := c.ShouldBindJSON(&request)
+	if err != nil {
+		h.logger.Warn(ctx, " error parse request", zap.Error(err))
+		response = responses.BadRequest
+		return
+	}
+
+	err = h.userService.CreateAdmin(ctx, request.Username, request.Password, request.RoleID)
+	if err != nil {
+		h.logger.Error(ctx, " err on h.userService.CreateAdmin", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	response = responses.Success
 }
 
 func (h *handler) LoginAdmin(c *gin.Context) {

@@ -65,11 +65,8 @@ func (r repo) Create(ctx context.Context, req structs.CreateEmployee) (structs.E
 				password,
 				is_active,
 				phone_number,
-				salary_amount,
-				kpi,
-				branch_id,
 				role_id
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
 		`
 		id int64
 	)
@@ -131,9 +128,6 @@ func (r repo) GetById(ctx context.Context, id int64) (structs.Employee, error) {
 				username,
 				is_active,
 				phone_number,
-				salary_amount,
-				kpi,
-				branch_id,
 				role_id,
 				created_at,
 				updated_at
@@ -175,9 +169,6 @@ func (r repo) GetAll(ctx context.Context, req structs.GetListEmployeeRequest) (s
 				e.username,
 				e.is_active,
 				e.phone_number,
-				e.salary_amount,
-				e.kpi,
-				e.branch_id,
 				e.role_id,
 				r.role_name,
 				e.created_at,

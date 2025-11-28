@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"sushitana/apps/gateway/handlers/cart"
 	"sushitana/apps/gateway/handlers/category"
 	"sushitana/apps/gateway/handlers/client"
 	"sushitana/apps/gateway/handlers/control"
@@ -22,4 +23,5 @@ var Module = fx.Options(
 	file.Module,
 	role.Module,
 	employee.Module,
+	cart.Module,
 )

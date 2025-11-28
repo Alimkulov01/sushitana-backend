@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"sushitana/internal/cart"
 	category "sushitana/internal/category"
 	client "sushitana/internal/client"
 	control "sushitana/internal/control"
@@ -20,4 +21,5 @@ var Module = fx.Options(
 	file.Module,
 	role.Module,
 	employee.Module,
+	cart.Module,
 )
