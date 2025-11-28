@@ -1,0 +1,40 @@
+name: Deploy via Docker TAR file
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: |
+          docker build -t sushitana-backend:latest .
+      - name: Save Docker image as tar
+        run: |
+          docker save sushitana-backend:latest -o sushitana-backend.tar
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Copy image tar to server
+        run: |
+          scp -o StrictHostKeyChecking=no sushitana-backend.tar \
+          ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/sushitana-backend.tar
+      - name: Load image and restart backend on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+            docker load -i /tmp/sushitana-backend.tar
+            rm -f /tmp/sushitana-backend.tar
+            cd /sushitano/development/backend/sushitana-backend
+            chmod +x restart.sh
+            ./restart.sh
+          EOF
