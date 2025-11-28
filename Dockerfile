@@ -17,7 +17,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/app .
-COPY .env .env
+#COPY .env .env
 COPY . .
 COPY configs configs
 EXPOSE 8080
