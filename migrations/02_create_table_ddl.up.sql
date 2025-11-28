@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS admins (
 );
 ALTER TABLE admins ADD COLUMN last_login TIMESTAMP ;
 ALTER TABLE admins ADD COLUMN  is_superuser BOOLEAN DEFAULT FALSE;
+INSERT INTO "roles"(id, role_name, role_description) VALUES('cdd37b47-c947-4faf-becc-0ed0c256d642', 'admin', 'Admin full permission');
 
 INSERT INTO admins(id, username, password_hash, role_id) VALUES (
     '00e1bd9b-d2f6-490a-b706-98b5657c064f',
@@ -24,7 +25,6 @@ INSERT INTO admins(id, username, password_hash, role_id) VALUES (
 );
 
 
-INSERT INTO "roles"(id, role_name, role_description) VALUES('cdd37b47-c947-4faf-becc-0ed0c256d642', 'admin', 'Admin full permission');
 
 CREATE TABLE IF NOT EXISTS access_scopes (
     id SERIAL PRIMARY KEY,
