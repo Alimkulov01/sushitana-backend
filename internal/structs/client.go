@@ -7,9 +7,10 @@ import (
 
 type Client struct {
 	ID        int64      `json:"id"`
-	TgID      string     `json:"tgid"`
+	TgID      int64      `json:"tgid"`
 	Phone     string     `json:"phone"`
 	Language  utils.Lang `json:"language"`
+	Name      string     `json:"name"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
 }

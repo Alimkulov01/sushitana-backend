@@ -53,14 +53,18 @@ func (r *repo) Create(ctx context.Context, req structs.CreateCategory) (resp str
 	query := `
         INSERT INTO category (
             name,
-			post_id
+			post_id,
+			is_active,
+			"index"
         ) VALUES (
             $1,
-			$2
+			$2,
+			$3,
+			$4
         )
-        RETURNING id, name, post_id, created_at, updated_at
+        RETURNING id, name, post_id, is_active, "index" created_at, updated_at
     `
-	err = r.db.QueryRow(ctx, query, req.Name, req.PostID).Scan(&resp.ID, &resp.Name, &resp.PostID, &resp.CreatedAt, &resp.UpdatedAt)
+	err = r.db.QueryRow(ctx, query, req.Name, req.PostID).Scan(&resp.ID, &resp.Name, &resp.PostID, &resp.IsActive, &resp.Index, &resp.CreatedAt, &resp.UpdatedAt)
 	if err != nil {
 		r.logger.Error(ctx, "err on r.db.QueryRow", zap.Error(err))
 		return structs.Category{}, fmt.Errorf("create category failed: %w", err)
@@ -77,6 +81,8 @@ func (r *repo) GetByID(ctx context.Context, id int64) (structs.Category, error) 
 				id,
 				name,
 				post_id,
+				is_active,
+				"index",
 				created_at, 
 				updated_at
 			FROM category
@@ -87,6 +93,8 @@ func (r *repo) GetByID(ctx context.Context, id int64) (structs.Category, error) 
 		&resp.ID,
 		&resp.Name,
 		&resp.PostID,
+		&resp.IsActive,
+		&resp.Index,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
 	)
@@ -119,6 +127,8 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 			id,
 			name,
 			post_id,
+			is_active,
+			"index",
 			created_at,
 			updated_at
 		FROM category
@@ -144,6 +154,8 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 			&c.ID,
 			&c.Name,
 			&c.PostID,
+			&c.IsActive,
+			&c.Index,
 			&c.CreatedAt,
 			&c.UpdatedAt,
 		)
@@ -177,6 +189,14 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchCategory) (int64, err
 	if req.PostID != nil {
 		setValues = append(setValues, "post_id = :post_id")
 		params["post_id"] = *req.PostID
+	}
+	if req.IsActive != nil {
+		setValues = append(setValues, "is_active = :is_active")
+		params["is_active"] = *req.IsActive
+	}
+	if req.Index != nil {
+		setValues = append(setValues, "index = :index")
+		params["index"] = *req.Index
 	}
 	setValues = append(setValues, "updated_At = NOW()")
 	if len(setValues) == 0 {

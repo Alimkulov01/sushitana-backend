@@ -10,9 +10,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.92.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-gonic/gin v1.11.0
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/google/uuid v1.6.0
+	github.com/ilpy20/telegram-bot-api/v7 v7.0.0-20241025103518-0311a8194a88
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/joho/godotenv v1.5.1

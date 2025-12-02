@@ -3,9 +3,9 @@ package tgrouter
 import (
 	"context"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-
 	"sushitana/pkg/tgrouter/interfaces"
+
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 )
 
 type ctxState struct {
@@ -50,29 +50,52 @@ func (c *Ctx) State() ctxState {
 
 func (c *Ctx) UpdateState(state string, data map[string]string) error {
 	c.SetState(state, data)
-	return c.stateDB.Set(c.Context, int(c.update.FromChat().ID), int(c.update.FromChat().ID), state, data)
+	return c.stateDB.Set(
+		c.Context,
+		int(c.update.FromChat().ID),
+		int(c.update.FromChat().ID),
+		state,
+		data,
+	)
 }
 
 func (c *Ctx) GetState() (string, map[string]string, error) {
-	return c.stateDB.Get(c.Context, int(c.update.FromChat().ID), int(c.update.FromChat().ID))
+	return c.stateDB.Get(
+		c.Context,
+		int(c.update.FromChat().ID),
+		int(c.update.FromChat().ID),
+	)
 }
 
 func (c *Ctx) ClearState() error {
 	c.SetState("", nil)
-	return c.stateDB.Delete(c.Context, int(c.update.FromChat().ID), int(c.update.FromChat().ID))
+	return c.stateDB.Delete(
+		c.Context,
+		int(c.update.FromChat().ID),
+		int(c.update.FromChat().ID),
+	)
 }
 
 func (c *Ctx) GetStateData(key string) (string, error) {
-	return c.stateDB.GetData(c.Context, int(c.update.FromChat().ID), int(c.update.FromChat().ID), key)
+	return c.stateDB.GetData(
+		c.Context,
+		int(c.update.FromChat().ID),
+		int(c.update.FromChat().ID),
+		key,
+	)
 }
 
 func (c *Ctx) UpdateStateData(m map[string]string) error {
-	return c.stateDB.UpdateData(c.Context, int(c.update.FromChat().ID), int(c.update.FromChat().ID), m)
+	return c.stateDB.UpdateData(
+		c.Context,
+		int(c.update.FromChat().ID),
+		int(c.update.FromChat().ID),
+		m,
+	)
 }
 
 // next should be used only inside middleware.
 // It executes the pending handlers in the chain inside the calling handler.
-// TODO: add example here.
 func (c *Ctx) next() {
 	c.index++
 	c.handlers(c)

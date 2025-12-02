@@ -12,6 +12,7 @@ const (
 	MenuButtonWebAppInfo  TextKey = "menu_button_web_app_info"
 	MenuButtonWebAppUrl   TextKey = "menu_button_web_app_url"
 	Language              TextKey = "language"
+	SetNameClient         TextKey = "set_name_client"
 	Retry                 TextKey = "retry"
 	SuccessChangeLanguage TextKey = "success_change_language"
 	MenuButton            TextKey = "menu_button"
@@ -27,8 +28,12 @@ const (
 
 var MapText = map[TextKey]utils.Language{
 	Language: {
-		RU: "Привет! Выберите язык коммуникации",
-		UZ: "Assalomu alaykum! Komunikatsiya tilini tanlang",
+		UZ: "🇺🇿 Iltimos, suhbat uchun qulay tilni tanlang:\n\n🇷🇺 Пожалуйста, выберите удобный язык для общения:\n\n🇬🇧 Please choose a language for the conversation:",
+	},
+	SetNameClient: {
+		UZ: "Iltimos, ismingizni yuboring.",
+		RU: "Пожалуйста, отправьте ваше имя.",
+		EN: "Please send your name.",
 	},
 	Retry: {
 		RU: "Что-то пошло не так, попробуйте снова",
@@ -69,52 +74,80 @@ var MapText = map[TextKey]utils.Language{
 	☎️ Связаться с нами — Есть вопросы? Мы всегда на связи!
 
 	🌍 Сменить язык — Выберите удобный для вас язык.`,
+		EN: `
+			👋 Welcome to the Sushi Tana bot!
+
+	🍣 We’re happy to see you! To get started, please choose one of the menu options below:
+
+	🍽 Menu — Order our delicious and fresh dishes.
+
+	🚀 Interactive Menu — Place your order through our convenient web-style menu.
+
+	✍️ Leave Feedback — Share your thoughts about our service.
+
+	ℹ️ Information — Learn more about our restaurant.
+
+	☎️ Contact Us — Have questions? We’re always here to help!
+
+	🌍 Change Language — Select the language that suits you best.`,
 	},
 	MenuButtonWebAppInfo: {
 		UZ: "🛍 Interaktiv menyuni ochish",
 		RU: "🛍 Открыть интерактивное меню",
+		EN: "🛍 Open interactive menu",
 	},
 	MenuButtonWebAppUrl: {
 		UZ: "🚀 Interaktiv menyu",
 		RU: "🚀 Интерактивное меню",
+		EN: "🚀 Interactive menu",
 	},
 	MenuButton: {
 		UZ: "🍽 Mazali menyu",
 		RU: "🍽 Вкусное меню",
+		EN: "🍽 Delicious menu",
 	},
 	FeedbackButton: {
 		UZ: "✍️ Fikr-mulohaza qoldirish",
 		RU: "✍️ Оставить отзыв",
+		EN: "✍️ Leave feedback",
 	},
 	InfoButton: {
 		UZ: "ℹ️ Maʼlumotlar",
 		RU: "ℹ️ Информация",
+		EN: "ℹ️ Information",
 	},
 	ContactButton: {
 		UZ: "☎️ Bogʻlanish",
 		RU: "☎️ Связаться",
+		EN: "☎️ Contact",
 	},
 	LanguageButton: {
 		UZ: "🌐 Tilni oʻzgartirish",
 		RU: "🌐 Сменить язык",
+		EN: "🌐 Change language",
 	},
 	SelectFromMenu: {
 		UZ: "Iltimos, menyudan kerakli bo‘limni tanlang 👇",
 		RU: "Пожалуйста, выберите нужный раздел из меню 👇",
+		EN: "Please choose the desired section from the menu 👇",
 	},
 	TypeLanguage: {
 		UZ: "🇺🇿 Oʻzbekcha",
 		RU: "🇷🇺 Русский",
+		EN: "🇬🇧 English",
 	},
 	Contact: {
 		UZ: `❓ Savollaringiz bormi? Biz bilan bog'laning: 
 +998981406003`,
 		RU: `❓ Остались вопросы? Свяжитесь с нами: 
 +998981406003`,
+		EN: `❓ Have any questions? Contact us:
++998981406003`,
 	},
 	BackButton: {
 		UZ: "🔙 Ortga",
 		RU: "🔙 Назад",
+		EN: "🔙 Back",
 	},
 }
 

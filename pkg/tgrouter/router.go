@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"golang.org/x/exp/rand"

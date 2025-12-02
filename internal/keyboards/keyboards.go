@@ -3,7 +3,7 @@ package keyboards
 import (
 	"sushitana/pkg/utils"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 )
 
 var LanguageKeyboard = func(lang utils.Lang) tgbotapi.ReplyKeyboardMarkup {
@@ -11,12 +11,12 @@ var LanguageKeyboard = func(lang utils.Lang) tgbotapi.ReplyKeyboardMarkup {
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("🇺🇿 Oʻzbekcha"),
 			tgbotapi.NewKeyboardButton("🇷🇺 Русский"),
+			tgbotapi.NewKeyboardButton("🇬🇧 English"),
 		),
 	)
 
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = true
-	
 
 	return keyboard
 }

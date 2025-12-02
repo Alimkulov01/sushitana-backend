@@ -11,7 +11,7 @@ import (
 	"sushitana/pkg/utils"
 	"sushitana/pkg/utils/ctxman"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )

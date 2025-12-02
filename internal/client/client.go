@@ -30,6 +30,8 @@ type (
 		GetByTgID(ctx context.Context, tgid int64) (structs.Client, error)
 		GetByID(ctx context.Context, id int64) (structs.Client, error)
 		UpdateLanguage(ctx context.Context, tgID int64, lang utils.Lang) error
+		UpdatePhone(ctx context.Context, tgID int64, phone string) error
+		UpdateName(ctx context.Context, tgID int64, name string) error
 		GetLanguageByTgID(ctx context.Context, tgID int64) (string, error)
 	}
 	service struct {
@@ -119,6 +121,32 @@ func (s service) UpdateLanguage(ctx context.Context, tgID int64, lang utils.Lang
 			return err
 		}
 		s.logger.Error(ctx, " err on s.clientRepo.UpdateLanguage", zap.Error(err))
+		return err
+	}
+	return err
+}
+
+func (s service) UpdatePhone(ctx context.Context, tgID int64, phone string) error {
+	err := s.clientRepo.UpdatePhone(ctx, tgID, phone)
+
+	if err != nil {
+		if errors.Is(err, structs.ErrNotFound) {
+			return err
+		}
+		s.logger.Error(ctx, " err on s.clientRepo.UpdatePhone", zap.Error(err))
+		return err
+	}
+	return err
+}
+
+func (s service) UpdateName(ctx context.Context, tgID int64, name string) error {
+	err := s.clientRepo.UpdateName(ctx, tgID, name)
+
+	if err != nil {
+		if errors.Is(err, structs.ErrNotFound) {
+			return err
+		}
+		s.logger.Error(ctx, " err on s.clientRepo.UpdateName", zap.Error(err))
 		return err
 	}
 	return err

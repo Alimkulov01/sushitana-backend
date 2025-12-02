@@ -12,7 +12,7 @@ import (
 	"sushitana/pkg/tgrouter"
 	"sushitana/pkg/tgrouter/interfaces"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 	"go.uber.org/fx"
 )
 
@@ -60,13 +60,15 @@ func NewBot(p Params) error {
 
 	tgrouter.On(bot, tgrouter.Cmd("start"), p.ClientsCmd.Start)
 
-	tgrouter.On(bot, tgrouter.State("show_main_menu"), p.ClientsCmd.MainMenuHandler) //1
+	tgrouter.On(bot, tgrouter.State("show_main_menu"), p.ClientsCmd.MainMenuHandler)
 	tgrouter.On(bot, tgrouter.State("waiting_change_language"), p.ClientsCmd.ChangeLanguage)
-	tgrouter.On(bot, tgrouter.State("category_selected"), p.CategoryCmd.MenuCategoryHandler) //2
+	tgrouter.On(bot, tgrouter.State("waiting_for_name"), p.ClientsCmd.SaveName)
+	tgrouter.On(bot, tgrouter.State("waiting_for_phone"), p.ClientsCmd.ChangePhone)
+	tgrouter.On(bot, tgrouter.State("category_selected"), p.CategoryCmd.MenuCategoryHandler)
 
 	// //product
 	tgrouter.On(bot, tgrouter.State("show_product"), p.ProductCmd.CategoryByMenu)
-	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.MenuCategoryMenuHandler) //3
+	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.MenuCategoryMenuHandler)
 	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfo)
 
 	go r.ListenUpdate(ctx)

@@ -2,8 +2,8 @@ package clients
 
 import (
 	"context"
-	"fmt"
 	"strings"
+
 	"sushitana/apps/bot/commands/product"
 	"sushitana/internal/client"
 	"sushitana/internal/keyboards"
@@ -13,9 +13,8 @@ import (
 	"sushitana/pkg/tgrouter"
 	"sushitana/pkg/utils"
 	"sushitana/pkg/utils/ctxman"
-	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -47,25 +46,171 @@ func (c *Commands) Start(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
 	c.logger.Info(ctx.Context, "start command", zap.Int64("user_tgid", chatID))
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx.Context, 3*time.Second)
-	defer cancel()
-
-	client, err := c.ClientSvc.Create(ctxWithTimeout, structs.CreateClient{
-		TgID: chatID,
-	})
-	if err != nil {
-		c.logger.Error(ctxWithTimeout, "failed to create client", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(utils.UZ, texts.Retry)))
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+	if account == nil {
+		c.logger.Error(ctx.Context, "account not found")
 		return
 	}
 
-	lang := client.Language
-	if lang == "" {
-		lang = utils.UZ
+	if account.Language == "" {
+		c.logger.Info(ctx.Context, "Language empty → asking language...")
+
+		msg := tgbotapi.NewMessage(chatID, texts.Get(utils.UZ, texts.Language))
+		msg.ReplyMarkup = keyboards.LanguageKeyboard(utils.UZ)
+
+		if _, err := ctx.Bot().Send(msg); err != nil {
+			c.logger.Error(ctx.Context, "failed to send language keyboard", zap.Error(err))
+		}
+
+		_ = ctx.UpdateState("waiting_change_language", map[string]string{"last_action": "edit_language"})
+		return
 	}
-	_ = ctx.UpdateState("show_main_menu", map[string]string{
-		"last_action": "start_bot",
-	})
+
+	if account.Name == "" {
+		c.logger.Info(ctx.Context, "Name empty → asking name...")
+		c.AskName(ctx)
+		return
+	}
+
+	if account.Phone == "" {
+		c.logger.Info(ctx.Context, "Phone empty → requesting phone...")
+		c.RequestPhone(ctx)
+		return
+	}
+
+	_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "start_bot"})
+	c.ShowMainMenu(ctx)
+}
+
+func (c *Commands) AskName(ctx *tgrouter.Ctx) {
+	chatID := ctx.Update().FromChat().ID
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+	if account == nil {
+		c.logger.Error(ctx.Context, "account not found in AskName")
+		return
+	}
+
+	msgText := texts.Get(account.Language, texts.SetNameClient)
+
+	msg := tgbotapi.NewMessage(chatID, msgText)
+	if _, err := ctx.Bot().Send(msg); err != nil {
+		c.logger.Error(ctx.Context, "failed to send ask name", zap.Error(err))
+		return
+	}
+
+	_ = ctx.UpdateState("waiting_for_name", map[string]string{"last_action": "ask_name"})
+}
+
+func (c *Commands) SaveName(ctx *tgrouter.Ctx) {
+	if ctx.Update().Message == nil {
+		c.logger.Info(ctx.Context, "SaveName: empty message")
+		return
+	}
+
+	chatID := ctx.Update().Message.Chat.ID
+	name := strings.TrimSpace(ctx.Update().Message.Text)
+	if name == "" {
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Iltimos, ismni matn ko'rinishida yuboring."))
+		return
+	}
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+	if account == nil {
+		c.logger.Error(ctx.Context, "account not found in SaveName")
+		return
+	}
+
+	if err := c.ClientSvc.UpdateName(ctx.Context, account.TgID, name); err != nil {
+		c.logger.Error(ctx.Context, "failed to update name", zap.Error(err))
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Xatolik yuz berdi, qayta urinib ko'ring."))
+		return
+	}
+
+	account.Name = name
+	ctx.Context = context.WithValue(ctx.Context, ctxman.AccountKey{}, account)
+
+	if account.Phone == "" {
+		c.RequestPhone(ctx)
+		return
+	}
+
+	_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "name_saved"})
+	c.ShowMainMenu(ctx)
+}
+
+func (c *Commands) RequestPhone(ctx *tgrouter.Ctx) {
+	chatID := ctx.Update().FromChat().ID
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+	if account == nil {
+		c.logger.Error(ctx.Context, "account not found in SaveName")
+		return
+	}
+
+	msg := tgbotapi.NewMessage(chatID, "📞 Telefon raqamingizni yuboring yoki pastdagi tugmani bosing.")
+
+	contactBtn := tgbotapi.NewKeyboardButtonContact("📲 Raqamni yuborish")
+	backBtn := tgbotapi.NewKeyboardButton(texts.BackButton)
+	keyboard := tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(contactBtn),
+		tgbotapi.NewKeyboardButtonRow(backBtn),
+	)
+	keyboard.ResizeKeyboard = true
+	keyboard.OneTimeKeyboard = true
+
+	msg.ReplyMarkup = keyboard
+
+	if _, err := ctx.Bot().Send(msg); err != nil {
+		c.logger.Error(ctx.Context, "failed to send contact request", zap.Error(err))
+		return
+	}
+
+	_ = ctx.UpdateState("waiting_for_phone", map[string]string{"last_action": "request_phone"})
+}
+
+func (c *Commands) ChangePhone(ctx *tgrouter.Ctx) {
+	c.logger.Info(ctx.Context, "ChangePhone handler called", zap.Any("update", ctx.Update()))
+
+	if ctx.Update().Message == nil || ctx.Update().Message.Contact == nil {
+		c.logger.Info(ctx.Context, "ChangePhone: no contact in message")
+		return
+	}
+
+	chatID := ctx.Update().Message.Chat.ID
+	contact := ctx.Update().Message.Contact
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+	if account == nil {
+		c.logger.Error(ctx.Context, "account not found")
+		return
+	}
+
+	if contact.UserID != 0 && contact.UserID != account.TgID {
+		c.logger.Warn(ctx.Context, "user sent another person's contact")
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Iltimos, o'zingizning kontaktingizni yuboring."))
+		return
+	}
+
+	phone := contact.PhoneNumber
+
+	if err := c.ClientSvc.UpdatePhone(ctx.Context, account.TgID, phone); err != nil {
+		c.logger.Error(ctx.Context, "failed to update phone", zap.Error(err))
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Xatolik yuz berdi, qayta urinib ko'ring."))
+		return
+	}
+
+	account.Phone = phone
+	ctx.Context = context.WithValue(ctx.Context, ctxman.AccountKey{}, account)
+
+	remove := tgbotapi.NewRemoveKeyboard(true)
+	confirm := tgbotapi.NewMessage(chatID, "Raqamingiz saqlandi ✅")
+	confirm.ReplyMarkup = remove
+
+	if _, err := ctx.Bot().Send(confirm); err != nil {
+		c.logger.Error(ctx.Context, "failed to send phone confirm", zap.Error(err))
+	}
+
+	_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "phone_saved"})
 	c.ShowMainMenu(ctx)
 }
 
@@ -73,53 +218,64 @@ func (c *Commands) MainMenuHandler(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
 		return
 	}
+
 	text := strings.TrimSpace(ctx.Update().Message.Text)
 	chatID := ctx.Update().Message.Chat.ID
 
-	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")
 		return
 	}
 	lang := account.Language
+
 	switch text {
 	case texts.Get(lang, texts.LanguageButton):
 		_ = ctx.UpdateState("change_language", nil)
 		c.ChangeLanguageInfo(ctx)
+
 	case texts.Get(lang, texts.ContactButton):
 		_ = ctx.UpdateState("contact", nil)
 		c.Contact(ctx)
+
 	case texts.Get(lang, texts.MenuButton):
 		_ = ctx.UpdateState("show_category", map[string]string{"last_action": "show_main_menu"})
 		c.ProductCmd.MenuCategoryMenuHandler(ctx)
-	default:
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))
 
+	default:
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))
 	}
 }
 
 func (c *Commands) ChangeLanguageInfo(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
-	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")
 		return
 	}
 	lang := account.Language
-	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
+
+	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Language))
 	msg.ReplyMarkup = keyboards.LanguageKeyboard(lang)
+
 	_ = ctx.UpdateState("waiting_change_language", map[string]string{"last_action": "change_language"})
-	ctx.Bot().Send(msg)
+	if _, err := ctx.Bot().Send(msg); err != nil {
+		c.logger.Error(ctx.Context, "failed to send change language keyboard", zap.Error(err))
+	}
 }
 
 func (c *Commands) Contact(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
-	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")
 		return
 	}
 	lang := account.Language
+
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.MenuButton)),
@@ -135,52 +291,79 @@ func (c *Commands) Contact(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
+	keyboard.ResizeKeyboard = true
+	keyboard.OneTimeKeyboard = false
+
 	_ = ctx.UpdateState("show_main_menu", map[string]string{
 		"last_action": "contact",
 	})
 
-	keyboard.ResizeKeyboard = true
-	keyboard.OneTimeKeyboard = false
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Contact))
 	msg.ReplyMarkup = keyboard
-	ctx.Bot().Send(msg)
+	_, _ = ctx.Bot().Send(msg)
 }
 
 func (c *Commands) ChangeLanguage(ctx *tgrouter.Ctx) {
-	chatID := ctx.Update().FromChat().ID
+	c.logger.Info(ctx.Context, "ChangeLanguage handler called", zap.Any("update", ctx.Update()))
+
+	if ctx.Update().Message == nil {
+		c.logger.Info(ctx.Context, "ChangeLanguage: update.Message is nil")
+		return
+	}
+
+	chatID := ctx.Update().Message.Chat.ID
 	text := strings.TrimSpace(ctx.Update().Message.Text)
-	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")
 		return
 	}
+
 	switch text {
-	case "🇺🇿 Oʻzbekcha":
+	case "🇺🇿 O'zbekcha":
 		account.Language = utils.UZ
 	case "🇷🇺 Русский":
 		account.Language = utils.RU
+	case "🇬🇧 English":
+		account.Language = utils.EN
 	default:
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(account.Language, texts.SelectFromMenu)))
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(account.Language, texts.SelectFromMenu)))
 		return
 	}
-	if err := c.ClientSvc.UpdateLanguage(ctx.Context, chatID, account.Language); err != nil {
-		c.logger.Error(ctx.Context, "update language err")
+
+	if err := c.ClientSvc.UpdateLanguage(ctx.Context, account.TgID, account.Language); err != nil {
+		c.logger.Error(ctx.Context, "update language err", zap.Error(err))
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Tilni saqlashda xatolik yuz berdi."))
 		return
 	}
+
 	ctx.Context = context.WithValue(ctx.Context, ctxman.AccountKey{}, account)
-	_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "waiting_change_language"})
-	ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(account.Language, texts.SuccessChangeLanguage)))
+
+	if account.Name == "" {
+		c.AskName(ctx)
+		return
+	}
+
+	if account.Phone == "" {
+		c.RequestPhone(ctx)
+		return
+	}
+
+	_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "language_changed"})
 	c.ShowMainMenu(ctx)
 }
 
 func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
-	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")
 		return
 	}
 	lang := account.Language
+
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.MenuButton)),
@@ -196,23 +379,28 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
-	_ = ctx.UpdateState("show_main_menu", map[string]string{
-		"last_action": "changed_language",
-	})
-
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
 
+	_ = ctx.UpdateState("show_main_menu", map[string]string{
+		"last_action": "show_main_menu",
+	})
+
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Welcome))
 	msg.ReplyMarkup = keyboard
-	ctx.Bot().Send(msg)
+	_, _ = ctx.Bot().Send(msg)
 
-	menuUrl := fmt.Sprintf("https://your-api.example/pay/mock/checkout?token=%d", chatID)
+	menuUrl := "https://sushitana.uz/uz/bot/home"
+
+	btn := tgbotapi.NewInlineKeyboardButtonWebApp(
+		texts.Get(lang, texts.MenuButtonWebAppUrl),
+		tgbotapi.WebAppInfo{URL: menuUrl},
+	)
+
 	msgUrl := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.MenuButtonWebAppInfo))
 	msgUrl.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL(texts.Get(lang, texts.MenuButtonWebAppUrl), menuUrl),
-		),
+		tgbotapi.NewInlineKeyboardRow(btn),
 	)
-	ctx.Bot().Send(msgUrl)
+
+	_, _ = ctx.Bot().Send(msgUrl)
 }

@@ -62,6 +62,13 @@ func NewRouter(params Params) {
 	api := r.Group(baseUrl)
 	api.Use(params.Ctx(), gin.Logger(), gin.Recovery())
 	api.Use(permissionMiddleware)
+	clientGroup := api.Group("/client")
+	{
+		clientGroup.GET("/", params.Client.GetListClient)
+		clientGroup.GET("/:id", params.Client.GetByIDClient)
+
+	}
+
 	categoryGroup := api.Group("/category")
 	{
 		categoryGroup.POST("/", params.Category.CreateCategory)

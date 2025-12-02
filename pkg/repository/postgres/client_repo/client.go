@@ -2,6 +2,7 @@ package clientrepo
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -34,6 +35,8 @@ type (
 		GetList(ctx context.Context, req structs.GetListClientRequest) (structs.GetListClientResponse, error)
 		Delete(ctx context.Context, clientID int64) error
 		UpdateLanguage(ctx context.Context, tgID int64, lang utils.Lang) error
+		UpdatePhone(ctx context.Context, tgID int64, phone string) error
+		UpdateName(ctx context.Context, tgID int64, name string) error
 		GetLanguageByTgID(ctx context.Context, tgID int64) (string, error)
 	}
 
@@ -52,13 +55,7 @@ func New(p Params) Repo {
 func (r *repo) Create(ctx context.Context, req structs.CreateClient) (resp structs.Client, err error) {
 	r.logger.Info(ctx, "Create client", zap.Any("req", req))
 	query := `
-        INSERT INTO clients (
-            tgid
-        ) VALUES (
-            $1
-        )
-        ON CONFLICT (tgid) DO NOTHING
-        RETURNING id, language
+        INSERT INTO clients (tgid) VALUES ($1) ON CONFLICT (tgid) DO NOTHING
     `
 	err = r.db.QueryRow(ctx, query, req.TgID).Scan(&resp.ID, &resp.Language)
 	if err != nil {
@@ -79,23 +76,25 @@ func (r *repo) Create(ctx context.Context, req structs.CreateClient) (resp struc
 func (r repo) GetByTgID(ctx context.Context, tgid int64) (structs.Client, error) {
 	var (
 		resp  structs.Client
+		lang  sql.NullString
 		query = `
-			SELECT
-				id,
-				tgid,
-				phone,
-				language,
-				created_at, 
-				updated_at
-			FROM clients
-			WHERE tgid = $1
-		`
+            SELECT
+                id,
+                tgid,
+                phone,
+                language,
+                created_at,
+                updated_at
+            FROM clients
+            WHERE tgid = $1
+        `
 	)
+
 	err := r.db.QueryRow(ctx, query, tgid).Scan(
 		&resp.ID,
 		&resp.TgID,
 		&resp.Phone,
-		&resp.Language,
+		&lang,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
 	)
@@ -107,7 +106,18 @@ func (r repo) GetByTgID(ctx context.Context, tgid int64) (structs.Client, error)
 		r.logger.Error(ctx, "error querying row", zap.Error(err))
 		return structs.Client{}, fmt.Errorf("error getting item by ID: %w", err)
 	}
-	return resp, err
+
+	if lang.Valid && lang.String != "" {
+		if parsed, ok := utils.ParseLang(lang.String); ok {
+			resp.Language = parsed
+		} else {
+			resp.Language = ""
+		}
+	} else {
+		resp.Language = ""
+	}
+
+	return resp, nil
 }
 
 func (r repo) GetByID(ctx context.Context, id int64) (structs.Client, error) {
@@ -262,6 +272,48 @@ func (r *repo) UpdateLanguage(ctx context.Context, tgID int64, lang utils.Lang) 
 	if err != nil {
 		r.logger.Error(ctx, "error updating lang", zap.Error(err))
 		return fmt.Errorf("failed to update lang: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		r.logger.Warn(ctx, "no client found with given tgid", zap.Int64("tgid", tgID))
+		return structs.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *repo) UpdatePhone(ctx context.Context, tgID int64, phone string) error {
+	query := `
+        UPDATE clients
+        SET phone = $1,
+            updated_at = now()
+        WHERE tgid = $2
+    `
+	result, err := r.db.Exec(ctx, query, phone, tgID)
+	if err != nil {
+		r.logger.Error(ctx, "error updating phone", zap.Error(err))
+		return fmt.Errorf("failed to update phone: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		r.logger.Warn(ctx, "no client found with given tgid", zap.Int64("tgid", tgID))
+		return structs.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *repo) UpdateName(ctx context.Context, tgID int64, name string) error {
+	query := `
+        UPDATE clients
+        SET name = $1,
+            updated_at = now()
+        WHERE tgid = $2
+    `
+	result, err := r.db.Exec(ctx, query, name, tgID)
+	if err != nil {
+		r.logger.Error(ctx, "error updating name", zap.Error(err))
+		return fmt.Errorf("failed to update name: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
