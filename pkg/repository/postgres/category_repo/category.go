@@ -53,18 +53,19 @@ func (r *repo) Create(ctx context.Context, req structs.CreateCategory) (resp str
 	query := `
         INSERT INTO category (
             name,
-			post_id,
-			is_active,
-			"index"
+            post_id,
+            is_active,
+            "index"
         ) VALUES (
             $1,
-			$2,
-			$3,
-			$4
+            $2,
+            $3,
+            $4
         )
-        RETURNING id, name, post_id, is_active, "index" created_at, updated_at
+        RETURNING id, name, post_id, is_active, "index", created_at, updated_at
     `
-	err = r.db.QueryRow(ctx, query, req.Name, req.PostID).Scan(&resp.ID, &resp.Name, &resp.PostID, &resp.IsActive, &resp.Index, &resp.CreatedAt, &resp.UpdatedAt)
+	err = r.db.QueryRow(ctx, query, req.Name, req.PostID, req.IsActive, req.Index).
+		Scan(&resp.ID, &resp.Name, &resp.PostID, &resp.IsActive, &resp.Index, &resp.CreatedAt, &resp.UpdatedAt)
 	if err != nil {
 		r.logger.Error(ctx, "err on r.db.QueryRow", zap.Error(err))
 		return structs.Category{}, fmt.Errorf("create category failed: %w", err)
@@ -72,7 +73,6 @@ func (r *repo) Create(ctx context.Context, req structs.CreateCategory) (resp str
 
 	return resp, nil
 }
-
 func (r *repo) GetByID(ctx context.Context, id int64) (structs.Category, error) {
 	var (
 		resp  structs.Category

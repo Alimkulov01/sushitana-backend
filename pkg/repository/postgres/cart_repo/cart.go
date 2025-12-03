@@ -154,13 +154,17 @@ func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID,
 	query := `
 		SELECT
 			tgid,
-			phone_number
+			phone,
+			language,
+			name
 		FROM clients 
 		WHERE tgid = $1
 	`
 	err := r.db.QueryRow(ctx, query, tgID).Scan(
 		&res.TGID,
 		&res.PhoneNumber,
+		&res.Language,
+		&res.Name,
 	)
 	if err != nil {
 		r.logger.Error(ctx, "failed to get cart by tgID", zap.Error(err))
@@ -168,32 +172,27 @@ func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID,
 	}
 
 	queryCartInfo := `
+		WITH t AS (SELECT $1::bigint AS tgid)
 		SELECT
 			COALESCE(SUM(p.price * c.count), 0) AS total_price,
-			COALESCE(JSONB_AGG(
-				JSONB_BUILD_OBJECT(
-					'id', p.id,
-					'name', p.name,
-					'category_id', p.category_id,
-					'img_url', p.img_url,
-					'description', p.description,
-					'price', p.price,
-					'count', c.count,
-					'is_active', p.is_active,
-					'created_at', p.created_at,
-					'updated_at', p.updated_at
-				)
-			) FILTER (WHERE p.id IS NOT NULL), '[]') AS products
-		FROM carts c
+			COALESCE(
+				JSONB_AGG(
+					JSONB_BUILD_OBJECT(
+						'id', p.id,
+						'name', p.name,
+						'img_url', p.img_url,
+						'price', p.price,
+						'count', c.count
+					)
+				) FILTER (WHERE p.id IS NOT NULL),
+			'[]') AS products
+		FROM t
+		LEFT JOIN carts c ON c.tgid = t.tgid
 		LEFT JOIN product p ON c.product_id = p.id
-		WHERE c.tgid = $1
-		GROUP BY c.tgid
-	`
-	err = r.db.QueryRow(ctx, queryCartInfo, tgID).Scan(
-		&cart.TotalPrice,
-		&cart.Products,
-	)
-	if err != nil {
+		GROUP BY t.tgid;
+		`
+
+	if err := r.db.QueryRow(ctx, queryCartInfo, tgID).Scan(&cart.TotalPrice, &cart.Products); err != nil {
 		r.logger.Error(ctx, "failed to get cart info by tgID", zap.Error(err))
 		return res, err
 	}

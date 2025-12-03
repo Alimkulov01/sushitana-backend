@@ -57,7 +57,7 @@ func (r *repo) Create(ctx context.Context, req structs.CreateProduct) (resp stru
 			img_url,
 			price,
 			count,
-			decription,
+			description,
 			is_active,
 			index,
 			is_new,
@@ -66,7 +66,7 @@ func (r *repo) Create(ctx context.Context, req structs.CreateProduct) (resp stru
 		) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, name, category_id, img_url, price, count, description, is_active, index, is_new, discount_price, post_id, created_at, updated_at
 	`
-	err = r.db.QueryRow(ctx, query, req.Name, req.CategoryID, req.ImgUrl, req.Price, req.Count, req.Description, req.IsActive).Scan(
+	err = r.db.QueryRow(ctx, query, req.Name, req.CategoryID, req.ImgUrl, req.Price, req.Count, req.Description, req.IsActive, req.Index, req.IsNew, req.DiscountPrice, req.PostID).Scan(
 		&resp.ID,
 		&resp.Name,
 		&resp.CategoryID,
@@ -75,6 +75,10 @@ func (r *repo) Create(ctx context.Context, req structs.CreateProduct) (resp stru
 		&resp.Count,
 		&resp.Description,
 		&resp.IsActive,
+		&resp.Index,
+		&resp.IsNew,
+		&resp.DiscountPrice,
+		&resp.PostID,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
 	)
@@ -96,7 +100,7 @@ func (r *repo) GetByID(ctx context.Context, id int64) (structs.Product, error) {
 				img_url,
 				price,
 				count,
-				decription,
+				description,
 				is_active,
 				index,
 				is_new,
@@ -146,7 +150,7 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 			img_url,
 			price,
 			count,
-			decription,
+			description,
 			is_active,
 			index,
 			is_new,
@@ -221,7 +225,7 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 			img_url,
 			price,
 			count,
-			decription,
+			description,
 			is_active,
 			index,
 			is_new,
@@ -407,7 +411,7 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 			p.img_url,
 			p.price,
 			p.count,
-			p.decription,
+			p.description,
 			p.is_active,
 			p.index,
 			p.is_new,

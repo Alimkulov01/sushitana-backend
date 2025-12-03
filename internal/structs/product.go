@@ -11,7 +11,7 @@ type Product struct {
 	Count         int64       `json:"count"`
 	Description   Description `json:"description"`
 	IsActive      bool        `json:"is_active"`
-	Index         string      `json:"index"`
+	Index         int64       `json:"index"`
 	IsNew         bool        `json:"is_new"`
 	DiscountPrice int64       `json:"discount_price"`
 	PostID        string      `json:"post_id"`
@@ -33,7 +33,7 @@ type CreateProduct struct {
 	Count         int64       `json:"count"`
 	Description   Description `json:"description"`
 	IsActive      bool        `json:"is_active"`
-	Index         string      `json:"index"`
+	Index         int64       `json:"index"`
 	IsNew         bool        `json:"is_new"`
 	DiscountPrice int64       `json:"discount_price"`
 	PostID        string      `json:"post_id"`

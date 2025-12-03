@@ -8,6 +8,7 @@ import (
 	"sushitana/internal/employee"
 	"sushitana/internal/file"
 	"sushitana/internal/iiko"
+	"sushitana/internal/menu"
 	"sushitana/internal/product"
 	"sushitana/internal/role"
 
@@ -24,4 +25,5 @@ var Module = fx.Options(
 	employee.Module,
 	cart.Module,
 	iiko.Module,
+	menu.Module,
 )

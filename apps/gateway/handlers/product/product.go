@@ -76,7 +76,7 @@ func (h *handler) CreateProduct(c *gin.Context) {
 	}
 
 	response = responses.Success
-	response.Payload = product.ID
+	response.Payload = product
 }
 
 func (h *handler) GetByIDProduct(c *gin.Context) {

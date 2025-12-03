@@ -9,6 +9,7 @@ import (
 	"sushitana/apps/gateway/handlers/employee"
 	"sushitana/apps/gateway/handlers/file"
 	"sushitana/apps/gateway/handlers/iiko"
+	"sushitana/apps/gateway/handlers/menu"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -45,6 +46,7 @@ type Params struct {
 	Employee  employee.Handler
 	Cart      cart.Handler
 	Iiko      iiko.Handler
+	Menu      menu.Handler
 }
 
 func NewRouter(params Params) {
@@ -119,15 +121,22 @@ func NewRouter(params Params) {
 		employeeGroup.DELETE("/:id", params.Employee.DeleteEmployee)
 		employeeGroup.PATCH("/:id", params.Employee.PatchEmployee)
 	}
+	userGroup := out.Group("/user")
+	{
+		userGroup.DELETE("/:id", params.Cart.ClearCart)
+		userGroup.PATCH("/", params.Cart.PatchCart)
+		userGroup.GET("/me/:id", params.Cart.GetByTgID)
+	}
+
 	cartGroup := out.Group("/cart")
 	{
 		cartGroup.POST("/", params.Cart.CreateCart)
-		cartGroup.DELETE("/:id", params.Cart.ClearCart)
 		cartGroup.DELETE("/", params.Cart.DeleteCart)
-		cartGroup.PATCH("/", params.Cart.PatchCart)
-		cartGroup.GET("/user/:id", params.Cart.GetByTgID)
 	}
-
+	menuGroup := out.Group("/menu")
+	{
+		menuGroup.GET("/", params.Menu.GetMenu)
+	}
 	server := http.Server{
 		Addr: params.Config.GetString("server.port"),
 		Handler: cors.New(cors.Options{
