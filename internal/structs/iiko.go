@@ -25,11 +25,10 @@ type GetCategoryMenuRequest struct {
 	OrganizationId string `json:"organizationId"`
 }
 
-type GetCategoryMenuResponse struct {
-	CorrelationId string        `json:"correlationId"`
-	Groups        []IikoGroup   `json:"groups"`
-	Products      []IikoProduct `json:"products"`
-	Revision      int64         `json:"revision"`
+type GetCategoryResponse struct {
+	CorrelationId string      `json:"correlationId"`
+	Groups        []IikoGroup `json:"groups"`
+	Revision      int64       `json:"revision"`
 }
 
 type IikoGroup struct {

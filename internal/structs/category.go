@@ -3,13 +3,17 @@ package structs
 import "time"
 
 type Category struct {
-	ID        int64     `json:"id"`
-	Name      Name      `json:"name"`
-	PostID    string    `json:"post_id"`
-	Index     int64     `json:"index"`
-	IsActive  bool      `json:"is_active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	Name             Name      `json:"name"`
+	ParentID         string    `json:"parent_id"`
+	IsIncludedInMenu bool      `json:"isIncludedInMenu"`
+	IsGroupModifier  bool      `json:"isGroupModifier"`
+	PostID           string    `json:"post_id"`
+	Index            int64     `json:"index"`
+	IsActive         bool      `json:"is_active"`
+	IsDeleted        bool      `json:"isDeleted"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type Name struct {
@@ -19,18 +23,23 @@ type Name struct {
 }
 
 type CreateCategory struct {
-	Name     Name   `json:"name"`
-	PostID   string `json:"post_id"`
-	Index    int64  `json:"index"`
-	IsActive bool   `json:"is_active"`
+	ID               string `json:"id"`
+	ParentID         string `json:"parent_id"`
+	IsIncludedInMenu bool   `json:"isIncludedInMenu"`
+	IsGroupModifier  bool   `json:"isGroupModifier"`
+	Name             Name   `json:"name"`
+	IsDeleted        bool   `json:"isDeleted"`
 }
 
 type PatchCategory struct {
-	ID       int64   `json:"id"`
-	Name     *Name   `json:"name"`
-	PostID   *string `json:"post_id"`
-	Index    *int64  `json:"index"`
-	IsActive *bool   `json:"is_active"`
+	ID               string  `json:"id"`
+	Name             *Name   `json:"name"`
+	PostID           *string `json:"post_id"`
+	Index            *int64  `json:"index"`
+	IsActive         *bool   `json:"is_active"`
+	IsIncludedInMenu *bool   `json:"isIncludedInMenu"`
+	IsGroupModifier  *bool   `json:"isGroupModifier"`
+	IsDeleted        *bool   `json:"isDeleted"`
 }
 
 type GetListCategoryRequest struct {

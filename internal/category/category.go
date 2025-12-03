@@ -23,10 +23,10 @@ type (
 	}
 
 	Service interface {
-		Create(ctx context.Context, req structs.CreateCategory) (structs.Category, error)
+		Create(ctx context.Context, token string, req []structs.IikoGroup) error
 		GetList(ctx context.Context, req structs.GetListCategoryRequest) (resp structs.GetListCategoryResponse, err error)
-		Delete(ctx context.Context, id int64) error
-		GetByID(ctx context.Context, id int64) (structs.Category, error)
+		Delete(ctx context.Context, id string) error
+		GetByID(ctx context.Context, id string) (structs.Category, error)
 		Patch(ctx context.Context, req structs.PatchCategory) (int64, error)
 	}
 	service struct {
@@ -42,16 +42,27 @@ func New(p Params) Service {
 	}
 }
 
-func (s service) Create(ctx context.Context, req structs.CreateCategory) (structs.Category, error) {
-	id, err := s.categoryRepo.Create(ctx, req)
+func (s service) Create(ctx context.Context, token string, req []structs.IikoGroup) error {
+	categories := []structs.CreateCategory{}
+	category := structs.CreateCategory{}
+	for _, group := range req {
+		category.ID = group.Id
+		category.Name.Ru = group.Name
+		category.ParentID = group.ParentGroup
+		category.IsIncludedInMenu = group.IsIncludedInMenu
+		category.IsGroupModifier = group.IsGroupModifier
+		category.IsDeleted = group.IsDeleted
+		categories = append(categories, category)
+	}
+	err := s.categoryRepo.Create(ctx, categories)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
-			return id, err
+			return err
 		}
 		s.logger.Error(ctx, "->categoryRepo.Create", zap.Error(err))
-		return id, err
+		return err
 	}
-	return id, err
+	return err
 }
 
 func (s service) GetList(ctx context.Context, req structs.GetListCategoryRequest) (resp structs.GetListCategoryResponse, err error) {
@@ -64,7 +75,7 @@ func (s service) GetList(ctx context.Context, req structs.GetListCategoryRequest
 	return resp, err
 }
 
-func (s service) Delete(ctx context.Context, id int64) error {
+func (s service) Delete(ctx context.Context, id string) error {
 	err := s.categoryRepo.Delete(ctx, id)
 	if err != nil {
 		s.logger.Error(ctx, "->categoryRepo.Delete", zap.Error(err))
@@ -72,7 +83,7 @@ func (s service) Delete(ctx context.Context, id int64) error {
 	}
 	return err
 }
-func (s service) GetByID(ctx context.Context, id int64) (resp structs.Category, err error) {
+func (s service) GetByID(ctx context.Context, id string) (resp structs.Category, err error) {
 	resp, err = s.categoryRepo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, structs.ErrNotFound) {

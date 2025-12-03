@@ -58,8 +58,6 @@ func NewRouter(params Params) {
 	iikoGroup := out.Group("/iiko")
 	{
 		iikoGroup.POST("/access-token", params.Iiko.GetIikoAccessToken)
-		iikoGroup.GET("/organizations", params.Iiko.GetOrganization)
-		iikoGroup.POST("/nomenclature", params.Iiko.GetCategoryMenu)
 	}
 
 	adminGroup := out.Group("/admin")
@@ -82,10 +80,10 @@ func NewRouter(params Params) {
 
 	categoryGroup := api.Group("/category")
 	{
-		categoryGroup.POST("/", params.Category.CreateCategory)
+		categoryGroup.POST("/sync", params.Category.SyncCategory)
 		categoryGroup.GET("/:id", params.Category.GetByIDCategory)
 		out.GET("/category", params.Category.GetListCategory)
-		categoryGroup.PATCH("/:id", params.Category.PatchCategory)
+		categoryGroup.PATCH("/", params.Category.PatchCategory)
 		categoryGroup.DELETE("/:id", params.Category.DeleteCategory)
 	}
 	productGroup := api.Group("/product")
@@ -93,7 +91,7 @@ func NewRouter(params Params) {
 		productGroup.POST("/", params.Product.CreateProduct)
 		productGroup.GET("/:id", params.Product.GetByIDProduct)
 		out.GET("/product", params.Product.GetListProduct)
-		productGroup.PATCH("/:id", params.Product.PatchProduct)
+		productGroup.PATCH("/", params.Product.PatchProduct)
 		productGroup.DELETE("/:id", params.Product.DeleteProduct)
 	}
 	fileGroup := api.Group("/file")

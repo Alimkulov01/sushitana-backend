@@ -116,7 +116,6 @@ func (c *Commands) MenuCategoryMenuHandler(ctx *tgrouter.Ctx) {
 	}
 	chatID := ctx.Update().FromChat().ID
 	text := strings.TrimSpace(ctx.Update().Message.Text)
-
 	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")

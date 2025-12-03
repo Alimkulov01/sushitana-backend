@@ -2,6 +2,7 @@ package categoryrepo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -28,10 +29,10 @@ type (
 	}
 
 	Repo interface {
-		Create(ctx context.Context, req structs.CreateCategory) (structs.Category, error)
-		GetByID(ctx context.Context, id int64) (structs.Category, error)
+		Create(ctx context.Context, req []structs.CreateCategory) error
+		GetByID(ctx context.Context, id string) (structs.Category, error)
 		GetList(ctx context.Context, req structs.GetListCategoryRequest) (structs.GetListCategoryResponse, error)
-		Delete(ctx context.Context, categoryID int64) error
+		Delete(ctx context.Context, categoryID string) error
 		Patch(ctx context.Context, req structs.PatchCategory) (int64, error)
 	}
 
@@ -48,32 +49,75 @@ func New(p Params) Repo {
 	}
 }
 
-func (r *repo) Create(ctx context.Context, req structs.CreateCategory) (resp structs.Category, err error) {
-	r.logger.Info(ctx, "Create category", zap.Any("req", req))
-	query := `
-        INSERT INTO category (
-            name,
-            post_id,
-            is_active,
-            "index"
-        ) VALUES (
-            $1,
-            $2,
-            $3,
-            $4
-        )
-        RETURNING id, name, post_id, is_active, "index", created_at, updated_at
-    `
-	err = r.db.QueryRow(ctx, query, req.Name, req.PostID, req.IsActive, req.Index).
-		Scan(&resp.ID, &resp.Name, &resp.PostID, &resp.IsActive, &resp.Index, &resp.CreatedAt, &resp.UpdatedAt)
-	if err != nil {
-		r.logger.Error(ctx, "err on r.db.QueryRow", zap.Error(err))
-		return structs.Category{}, fmt.Errorf("create category failed: %w", err)
+func (r *repo) Create(ctx context.Context, req []structs.CreateCategory) error {
+	r.logger.Info(ctx, "Create called", zap.Int("count", len(req)))
+	if len(req) == 0 {
+		return nil
 	}
 
-	return resp, nil
+	batchSize := 1000
+	totalInserted := int64(0)
+
+	sqlTemplate := `
+		INSERT INTO category (id, name, parent_id, is_included_in_menu, is_group_modifier, is_deleted)
+		SELECT id::text, name::jsonb, parent_id::text, is_included_in_menu::boolean, is_group_modifier::boolean, is_deleted::boolean
+		FROM jsonb_to_recordset($1::jsonb) AS t(id text, name jsonb, parent_id text, is_included_in_menu boolean, is_group_modifier boolean, is_deleted boolean)
+		ON CONFLICT (id) DO UPDATE
+		SET
+		name = category.name || (CASE WHEN (EXCLUDED.name ? 'ru') THEN jsonb_build_object('ru', EXCLUDED.name->>'ru') ELSE '{}'::jsonb END),
+		parent_id = EXCLUDED.parent_id,
+		is_included_in_menu = EXCLUDED.is_included_in_menu,
+		is_group_modifier = EXCLUDED.is_group_modifier,
+		is_deleted = EXCLUDED.is_deleted,
+		updated_at = now()
+		WHERE
+			(CASE WHEN (EXCLUDED.name ? 'ru')
+			THEN (category.name->>'ru') IS DISTINCT FROM (EXCLUDED.name->>'ru')
+			ELSE false END)
+		OR category.parent_id IS DISTINCT FROM EXCLUDED.parent_id
+		OR COALESCE(category.is_included_in_menu, false) IS DISTINCT FROM COALESCE(EXCLUDED.is_included_in_menu, false)
+		OR COALESCE(category.is_group_modifier, false) IS DISTINCT FROM COALESCE(EXCLUDED.is_group_modifier, false)
+		OR COALESCE(category.is_deleted, false) IS DISTINCT FROM COALESCE(EXCLUDED.is_deleted, false);
+		`
+
+	for start := 0; start < len(req); start += batchSize {
+		end := start + batchSize
+		if end > len(req) {
+			end = len(req)
+		}
+
+		part := req[start:end]
+		b, err := json.Marshal(part)
+		if err != nil {
+			r.logger.Error(ctx, "failed to marshal categories batch", zap.Error(err), zap.Int("start", start), zap.Int("end", end))
+			return fmt.Errorf("marshal batch: %w", err)
+		}
+
+		tx, err := r.db.Begin(ctx)
+		if err != nil {
+			r.logger.Error(ctx, "begin tx failed", zap.Error(err))
+			return fmt.Errorf("begin tx: %w", err)
+		}
+
+		_, err = tx.Exec(ctx, sqlTemplate, string(b))
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			r.logger.Error(ctx, "insert batch failed", zap.Error(err))
+			return fmt.Errorf("insert batch failed: %w", err)
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			_ = tx.Rollback(ctx)
+			r.logger.Error(ctx, "tx commit failed", zap.Error(err))
+			return fmt.Errorf("tx commit: %w", err)
+		}
+
+	}
+
+	r.logger.Info(ctx, "CreateCategories finished", zap.Int64("inserted", totalInserted))
+	return nil
 }
-func (r *repo) GetByID(ctx context.Context, id int64) (structs.Category, error) {
+func (r *repo) GetByID(ctx context.Context, id string) (structs.Category, error) {
 	var (
 		resp  structs.Category
 		query = `
@@ -84,7 +128,11 @@ func (r *repo) GetByID(ctx context.Context, id int64) (structs.Category, error) 
 				is_active,
 				"index",
 				created_at, 
-				updated_at
+				updated_at,
+				parent_id,
+				is_included_in_menu,
+				is_group_modifier,
+				is_deleted
 			FROM category
 			WHERE id = $1
 		`
@@ -97,6 +145,10 @@ func (r *repo) GetByID(ctx context.Context, id int64) (structs.Category, error) 
 		&resp.Index,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
+		&resp.ParentID,
+		&resp.IsIncludedInMenu,
+		&resp.IsGroupModifier,
+		&resp.IsDeleted,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -122,19 +174,21 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 	}
 
 	query := `
-		SELECT
-			COUNT(*) OVER(),
-			id,
-			name,
-			post_id,
-			is_active,
-			"index",
-			created_at,
-			updated_at
-		FROM category
-		WHERE TRUE
-		ORDER BY index ASC, created_at DESC
-		LIMIT $1 OFFSET $2
+		SELECT 
+			COUNT(*) OVER(), 
+			id, 
+			name, 
+			post_id, 
+			COALESCE(is_active, false) AS is_active, 
+			"index", 
+			created_at, 
+			updated_at, 
+			parent_id, 
+			COALESCE(is_included_in_menu, false) AS is_included_in_menu, 
+			COALESCE(is_group_modifier, false) AS is_group_modifier, 
+			COALESCE(is_deleted, false) AS is_deleted 
+		FROM category ORDER BY "index" ASC, created_at DESC 
+		LIMIT $1 OFFSET $2;
 	`
 
 	rows, err := r.db.Query(ctx, query, limit, offset)
@@ -158,6 +212,10 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 			&c.Index,
 			&c.CreatedAt,
 			&c.UpdatedAt,
+			&c.ParentID,
+			&c.IsIncludedInMenu,
+			&c.IsGroupModifier,
+			&c.IsDeleted,
 		)
 		if err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
@@ -200,7 +258,7 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchCategory) (int64, err
 	}
 	setValues = append(setValues, "updated_At = NOW()")
 	if len(setValues) == 0 {
-		return 0, fmt.Errorf("no fields to update for category with ID %d", req.ID)
+		return 0, fmt.Errorf("no fields to update for category with ID %s", req.ID)
 	}
 
 	query := fmt.Sprintf(`
@@ -211,7 +269,7 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchCategory) (int64, err
 
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("error starting transaction for category ID %d: %w", req.ID, err)
+		return 0, fmt.Errorf("error starting transaction for category ID %s: %w", req.ID, err)
 	}
 
 	query, args := utils.ReplaceQueryParams(query, params)
@@ -219,31 +277,31 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchCategory) (int64, err
 	if err != nil {
 		if errRollback := tx.Rollback(ctx); errRollback != nil {
 			r.logger.Error(ctx, "error rolling back transaction", zap.Error(errRollback))
-			return 0, fmt.Errorf("error rolling back transaction for category ID %d: %w", req.ID, errRollback)
+			return 0, fmt.Errorf("error rolling back transaction for category ID %s: %w", req.ID, errRollback)
 		}
 		r.logger.Error(ctx, "error executing update", zap.Error(err))
-		return 0, fmt.Errorf("error updating category with ID %d: %w", req.ID, err)
+		return 0, fmt.Errorf("error updating category with ID %s: %w", req.ID, err)
 	}
 
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
 		if errRollback := tx.Rollback(ctx); errRollback != nil {
 			r.logger.Error(ctx, "error rolling back transaction", zap.Error(errRollback))
-			return 0, fmt.Errorf("error rolling back transaction for category ID %d: %w", req.ID, errRollback)
+			return 0, fmt.Errorf("error rolling back transaction for category ID %s: %w", req.ID, errRollback)
 		}
 		r.logger.Warn(ctx, "no category found with the given ID", zap.String("category_id", cast.ToString(req.ID)))
-		return 0, fmt.Errorf("no category found with ID %d", req.ID)
+		return 0, fmt.Errorf("no category found with ID %s", req.ID)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		r.logger.Error(ctx, "error committing transaction", zap.Error(err))
-		return 0, fmt.Errorf("error committing transaction for category ID %d: %w", req.ID, err)
+		return 0, fmt.Errorf("error committing transaction for category ID %s: %w", req.ID, err)
 	}
 
 	return rowsAffected, nil
 }
 
-func (r *repo) Delete(ctx context.Context, categoryID int64) error {
+func (r *repo) Delete(ctx context.Context, categoryID string) error {
 	r.logger.Info(ctx, "Delete category", zap.String("category_id", cast.ToString(categoryID)))
 
 	query := `
@@ -254,13 +312,13 @@ func (r *repo) Delete(ctx context.Context, categoryID int64) error {
 	result, err := r.db.Exec(ctx, query, categoryID)
 	if err != nil {
 		r.logger.Error(ctx, "error executing delete", zap.Error(err))
-		return fmt.Errorf("error deleting category with ID %d: %w", categoryID, err)
+		return fmt.Errorf("error deleting category with ID %s: %w", categoryID, err)
 	}
 
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
 		r.logger.Warn(ctx, "no category found with the given ID", zap.String("category_id", cast.ToString(categoryID)))
-		return fmt.Errorf("no category found with ID %d", categoryID)
+		return fmt.Errorf("no category found with ID %s", categoryID)
 	}
 
 	return nil

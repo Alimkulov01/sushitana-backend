@@ -42,5 +42,3 @@ CREATE TABLE product(
     updated_at TIMESTAMP DEFAULT now()
 );
 ALTER TABLE product RENAME COLUMN decription TO description;
-ALTER TABLE carts
-ADD COLUMN tgid BIGINT; 

@@ -18,8 +18,6 @@ var Module = fx.Provide(New)
 type (
 	Handler interface {
 		GetIikoAccessToken(c *gin.Context)
-		GetOrganization(c *gin.Context)
-		GetCategoryMenu(c *gin.Context)
 	}
 
 	Params struct {
@@ -55,59 +53,12 @@ func (h *handler) GetIikoAccessToken(c *gin.Context) {
 		response = responses.BadRequest
 		return
 	}
-	resp, err := h.iikoService.GetIikoAccessToken(ctx, req)
+	resp, err := h.iikoService.GetIikoAccessToken(ctx)
 	if err != nil {
 		h.logger.Error(ctx, " err create click invoice", zap.Error(err))
 		response = responses.InternalErr
 		return
 	}
-	response = responses.Success
-	response.Payload = resp
-}
-
-func (h *handler) GetOrganization(c *gin.Context) {
-	var (
-		token    = c.GetHeader("Authorization")
-		response structs.Response
-		ctx      = c.Request.Context()
-	)
-
-	defer reply.Json(c.Writer, http.StatusOK, &response)
-
-	resp, err := h.iikoService.GetOrganization(c, token)
-	if err != nil {
-		h.logger.Error(ctx, " err on h.userService.GetOrganization", zap.Error(err))
-		response = responses.InternalErr
-		return
-	}
-
-	response = responses.Success
-	response.Payload = resp
-}
-
-func (h *handler) GetCategoryMenu(c *gin.Context) {
-	var (
-		token    = c.GetHeader("Authorization")
-		req      structs.GetCategoryMenuRequest
-		response structs.Response
-		ctx      = c.Request.Context()
-	)
-
-	defer reply.Json(c.Writer, http.StatusOK, &response)
-	err := c.ShouldBindJSON(&req)
-	if err != nil {
-		h.logger.Error(ctx, " err parse request", zap.Error(err))
-		response = responses.BadRequest
-		return
-	}
-
-	resp, err := h.iikoService.GetCategoryMenu(c, token, req)
-	if err != nil {
-		h.logger.Error(ctx, " err on h.userService.GetCategoryMenu", zap.Error(err))
-		response = responses.InternalErr
-		return
-	}
-
 	response = responses.Success
 	response.Payload = resp
 }

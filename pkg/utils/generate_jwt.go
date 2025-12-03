@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -60,4 +63,44 @@ func ParseJWT(tokenString string) (jwt.MapClaims, error) {
 	}
 
 	return claims, nil
+}
+
+func ParseJWTExp(token string) (int64, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("not jwt")
+	}
+	payload := parts[1]
+	// add padding
+	switch len(payload) % 4 {
+	case 2:
+		payload += "=="
+	case 3:
+		payload += "="
+	}
+	b, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		b, err = base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			return 0, err
+		}
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(b, &obj); err != nil {
+		return 0, err
+	}
+	if expV, ok := obj["exp"]; ok {
+		switch v := expV.(type) {
+		case float64:
+			return int64(v), nil
+		case int64:
+			return v, nil
+		case json.Number:
+			i, _ := v.Int64()
+			return i, nil
+		default:
+			return 0, fmt.Errorf("unknown exp type %T", v)
+		}
+	}
+	return 0, fmt.Errorf("exp not found")
 }

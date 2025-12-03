@@ -3,8 +3,10 @@ package category
 import (
 	"errors"
 	"net/http"
+	"os"
 
 	category "sushitana/internal/category"
+	"sushitana/internal/iiko"
 	"sushitana/internal/responses"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
@@ -12,7 +14,6 @@ import (
 	"sushitana/pkg/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/cast"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -23,7 +24,7 @@ var (
 
 type (
 	Handler interface {
-		CreateCategory(c *gin.Context)
+		SyncCategory(c *gin.Context)
 		GetListCategory(c *gin.Context)
 		GetByIDCategory(c *gin.Context)
 		DeleteCategory(c *gin.Context)
@@ -33,11 +34,13 @@ type (
 		fx.In
 		Logger          logger.Logger
 		CategoryService category.Service
+		IIKOService     iiko.Service
 	}
 
 	handler struct {
 		logger          logger.Logger
 		categoryService category.Service
+		iikoService     iiko.Service
 	}
 )
 
@@ -45,48 +48,61 @@ func New(p Params) Handler {
 	return &handler{
 		logger:          p.Logger,
 		categoryService: p.CategoryService,
+		iikoService:     p.IIKOService,
 	}
 }
 
-func (h *handler) CreateCategory(c *gin.Context) {
+func (h *handler) SyncCategory(c *gin.Context) {
 	var (
 		response structs.Response
-		request  structs.CreateCategory
 		ctx      = c.Request.Context()
 	)
 
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
-	err := c.ShouldBindJSON(&request)
-	if err != nil {
-		h.logger.Warn(ctx, " error parse request", zap.Error(err))
-		response = responses.BadRequest
+	organizationId := os.Getenv("IIKO_ORGANIZATION_ID")
+	if organizationId == "" {
+		h.logger.Error(ctx, "IIKO_ORGANIZATION_ID not set")
+		response = responses.InternalErr
 		return
 	}
 
-	category, err := h.categoryService.Create(c, request)
+	token, err := h.iikoService.EnsureValidIikoToken(ctx)
 	if err != nil {
+		h.logger.Error(ctx, "err EnsureValidIikoToken", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	resp, err := h.iikoService.GetCategory(ctx, token, structs.GetCategoryMenuRequest{
+		OrganizationId: organizationId,
+	})
+	if err != nil {
+		h.logger.Error(ctx, "err on h.iikoService.GetCategory", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	if err := h.categoryService.Create(c, token, resp.Groups); err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
 			response = responses.BadRequest
 			return
 		}
-		h.logger.Error(ctx, " err on h.categoryService.Create", zap.Error(err))
+		h.logger.Error(ctx, "err on h.categoryService.Create", zap.Error(err))
 		response = responses.InternalErr
 		return
 	}
 
 	response = responses.Success
-	response.Payload = category.ID
 }
 
 func (h *handler) GetByIDCategory(c *gin.Context) {
 	var (
 		response structs.Response
-		idStr    = c.Param("id")
+		id       = c.Param("id")
 		ctx      = c.Request.Context()
 	)
 	defer reply.Json(c.Writer, http.StatusOK, &response)
-	id := cast.ToInt64(idStr)
 	respond, err := h.categoryService.GetByID(c, id)
 	if err != nil {
 		if errors.Is(err, structs.ErrNotFound) {
@@ -136,11 +152,10 @@ func (h *handler) DeleteCategory(c *gin.Context) {
 
 	var (
 		response structs.Response
-		idStr    = c.Param("id")
+		id       = c.Param("id")
 		ctx      = c.Request.Context()
 	)
 	defer reply.Json(c.Writer, http.StatusOK, &response)
-	id := cast.ToInt64(idStr)
 	err := h.categoryService.Delete(c, id)
 	if err != nil {
 		if errors.Is(err, structs.ErrNotFound) {
