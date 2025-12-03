@@ -20,7 +20,7 @@ CREATE TABLE state (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_state_on_user_id_chat_id ON state(user_id, chat_id);
 
 CREATE TABLE category (
-    id BIGSERIAL PRIMARY KEY,
+    id VARCHAR PRIMARY KEY,
     name JSONB NOT NULL DEFAULT '{}'::jsonb,
     post_id VARCHAR DEFAULT '',
     created_at TIMESTAMP DEFAULT now(),
@@ -30,9 +30,9 @@ CREATE TABLE category (
 ALTER TABLE category ADD COLUMN IF NOT EXISTS index INT DEFAULT 0;
 
 CREATE TABLE product(
-    id BIGSERIAL PRIMARY KEY,
+    id VARCHAR PRIMARY KEY,
     name JSONB NOT NULL DEFAULT '{}'::jsonb,
-    category_id INTEGER NOT NULL REFERENCES category("id"),
+    category_id VARCHAR NOT NULL REFERENCES category("id"),
     img_url VARCHAR DEFAULT '',
     price INTEGER DEFAULT 0,
     count INTEGER DEFAULT 0,

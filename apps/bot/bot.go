@@ -64,10 +64,10 @@ func NewBot(p Params) error {
 	tgrouter.On(bot, tgrouter.State("waiting_change_language"), p.ClientsCmd.ChangeLanguage)
 	tgrouter.On(bot, tgrouter.State("waiting_for_name"), p.ClientsCmd.SaveName)
 	tgrouter.On(bot, tgrouter.State("waiting_for_phone"), p.ClientsCmd.ChangePhone)
-
+	//category
+	tgrouter.On(bot, tgrouter.State("product_selected"), p.CategoryCmd.MenuCategoryHandler)
 	// //product
 	tgrouter.On(bot, tgrouter.State("category_selected"), p.ProductCmd.CategoryByMenu)
-	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.MenuCategoryMenuHandler)
 	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfo)
 
 	go r.ListenUpdate(ctx)

@@ -400,7 +400,6 @@ func (r *repo) Delete(ctx context.Context, productID int64) error {
 
 func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []structs.Product, err error) {
 	r.logger.Info(ctx, "GetList Product by category name", zap.Any("req", req))
-
 	pattern := "%" + req + "%"
 
 	query := `

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"sushitana/apps/bot/commands/product"
+	"sushitana/apps/bot/commands/category"
 	"sushitana/internal/client"
 	"sushitana/internal/keyboards"
 	"sushitana/internal/structs"
@@ -24,22 +24,22 @@ var Module = fx.Provide(New)
 
 type Params struct {
 	fx.In
-	Logger     logger.Logger
-	ClientSvc  client.Service
-	ProductCmd product.Commands
+	Logger      logger.Logger
+	ClientSvc   client.Service
+	CategoryCmd category.Commands
 }
 
 type Commands struct {
-	logger     logger.Logger
-	ClientSvc  client.Service
-	ProductCmd product.Commands
+	logger      logger.Logger
+	ClientSvc   client.Service
+	CategoryCmd category.Commands
 }
 
 func New(p Params) Commands {
 	return Commands{
-		logger:     p.Logger,
-		ClientSvc:  p.ClientSvc,
-		ProductCmd: p.ProductCmd,
+		logger:      p.Logger,
+		ClientSvc:   p.ClientSvc,
+		CategoryCmd: p.CategoryCmd,
 	}
 }
 
@@ -234,7 +234,7 @@ func (c *Commands) MainMenuHandler(ctx *tgrouter.Ctx) {
 
 	case texts.Get(lang, texts.MenuButton):
 		_ = ctx.UpdateState("show_category", map[string]string{"last_action": "show_main_menu"})
-		c.ProductCmd.MenuCategoryMenuHandler(ctx)
+		c.CategoryCmd.MenuCategoryHandler(ctx)
 
 	default:
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))
