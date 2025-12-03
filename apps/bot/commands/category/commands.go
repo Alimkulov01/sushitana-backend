@@ -3,6 +3,7 @@ package category
 import (
 	"fmt"
 	"strings"
+	"sushitana/apps/bot/commands/clients"
 	"sushitana/apps/bot/commands/product"
 	"sushitana/internal/category"
 	"sushitana/internal/structs"
@@ -24,12 +25,14 @@ type Params struct {
 	Logger      logger.Logger
 	CategorySvc category.Service
 	ProductCmd  product.Commands
+	ClientsCmd  clients.Commands
 }
 
 type Commands struct {
 	logger      logger.Logger
 	CategorySvc category.Service
 	ProductCmd  product.Commands
+	ClientsCmd  clients.Commands
 }
 
 func New(p Params) Commands {
@@ -37,6 +40,7 @@ func New(p Params) Commands {
 		logger:      p.Logger,
 		CategorySvc: p.CategorySvc,
 		ProductCmd:  p.ProductCmd,
+		ClientsCmd:  p.ClientsCmd,
 	}
 }
 
@@ -70,6 +74,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	switch text {
 	case texts.Get(lang, texts.BackButton):
 		_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "show_category"})
+		c.ClientsCmd.ShowMainMenu(ctx)
 		return
 	default:
 		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))

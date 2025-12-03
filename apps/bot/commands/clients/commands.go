@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"sushitana/apps/bot/commands/product"
@@ -55,7 +56,7 @@ func (c *Commands) Start(ctx *tgrouter.Ctx) {
 	if account.Language == "" {
 		c.logger.Info(ctx.Context, "Language empty → asking language...")
 
-		msg := tgbotapi.NewMessage(chatID, texts.Get(utils.UZ, texts.Language))
+		msg := tgbotapi.NewMessage(chatID, texts.Get(utils.UZ, texts.AllLanguageInfo))
 		msg.ReplyMarkup = keyboards.LanguageKeyboard(utils.UZ)
 
 		if _, err := ctx.Bot().Send(msg); err != nil {
@@ -141,19 +142,12 @@ func (c *Commands) SaveName(ctx *tgrouter.Ctx) {
 
 func (c *Commands) RequestPhone(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
-	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
-	if account == nil {
-		c.logger.Error(ctx.Context, "account not found in SaveName")
-		return
-	}
 
 	msg := tgbotapi.NewMessage(chatID, "📞 Telefon raqamingizni yuboring yoki pastdagi tugmani bosing.")
 
 	contactBtn := tgbotapi.NewKeyboardButtonContact("📲 Raqamni yuborish")
-	backBtn := tgbotapi.NewKeyboardButton(texts.BackButton)
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(contactBtn),
-		tgbotapi.NewKeyboardButtonRow(backBtn),
 	)
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = true
@@ -258,12 +252,14 @@ func (c *Commands) ChangeLanguageInfo(ctx *tgrouter.Ctx) {
 	lang := account.Language
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Language))
+	fmt.Println(msg)
 	msg.ReplyMarkup = keyboards.LanguageKeyboard(lang)
 
-	_ = ctx.UpdateState("waiting_change_language", map[string]string{"last_action": "change_language"})
 	if _, err := ctx.Bot().Send(msg); err != nil {
-		c.logger.Error(ctx.Context, "failed to send change language keyboard", zap.Error(err))
+		c.logger.Error(ctx.Context, "failed to send language keyboard", zap.Error(err))
 	}
+	_ = ctx.UpdateState("waiting_change_language", map[string]string{"last_action": "change_language"})
+
 }
 
 func (c *Commands) Contact(ctx *tgrouter.Ctx) {
@@ -321,7 +317,7 @@ func (c *Commands) ChangeLanguage(ctx *tgrouter.Ctx) {
 	}
 
 	switch text {
-	case "🇺🇿 O'zbekcha":
+	case "🇺🇿 Oʻzbekcha":
 		account.Language = utils.UZ
 	case "🇷🇺 Русский":
 		account.Language = utils.RU

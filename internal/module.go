@@ -7,6 +7,7 @@ import (
 	control "sushitana/internal/control"
 	"sushitana/internal/employee"
 	"sushitana/internal/file"
+	"sushitana/internal/iiko"
 	"sushitana/internal/product"
 	"sushitana/internal/role"
 
@@ -22,4 +23,5 @@ var Module = fx.Options(
 	role.Module,
 	employee.Module,
 	cart.Module,
+	iiko.Module,
 )

@@ -83,6 +83,7 @@ func (r repo) GetByTgID(ctx context.Context, tgid int64) (structs.Client, error)
                 tgid,
                 phone,
                 language,
+				name,
                 created_at,
                 updated_at
             FROM clients
@@ -95,6 +96,7 @@ func (r repo) GetByTgID(ctx context.Context, tgid int64) (structs.Client, error)
 		&resp.TgID,
 		&resp.Phone,
 		&lang,
+		&resp.Name,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
 	)

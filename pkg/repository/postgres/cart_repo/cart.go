@@ -49,7 +49,7 @@ func New(p Params) Repo {
 func (r repo) Create(ctx context.Context, req structs.CreateCart) error {
 	r.logger.Info(ctx, "Create cart", zap.Any("req", req))
 	query := `
-		INSERT INTO carts(tg_id, product_id, count) VALUES ($1, $2, $3)
+		INSERT INTO carts(tgid, product_id, count) VALUES ($1, $2, $3)
 	`
 	_, err := r.db.Exec(ctx, query, req.TGID, req.ProductID, req.Count)
 	if err != nil {
@@ -61,9 +61,9 @@ func (r repo) Create(ctx context.Context, req structs.CreateCart) error {
 }
 
 func (r repo) Clear(ctx context.Context, tgID int64) error {
-	r.logger.Info(ctx, "Clear cart", zap.Int64("tg_id", tgID))
+	r.logger.Info(ctx, "Clear cart", zap.Int64("tgid", tgID))
 	query := `
-		DELETE FROM carts WHERE tg_id = $1
+		DELETE FROM carts WHERE tgid = $1
 	`
 	_, err := r.db.Exec(ctx, query, tgID)
 	if err != nil {
@@ -76,7 +76,7 @@ func (r repo) Clear(ctx context.Context, tgID int64) error {
 func (r repo) Delete(ctx context.Context, req structs.DeleteCart) error {
 	r.logger.Info(ctx, "Delete cart item", zap.Any("req", req))
 	query := `
-		DELETE FROM carts WHERE tg_id = $1 AND product_id = $2
+		DELETE FROM carts WHERE tgid = $1 AND product_id = $2
 	`
 	_, err := r.db.Exec(ctx, query, req.TGID, req.ProductID)
 	if err != nil {
@@ -146,17 +146,17 @@ func (r repo) Patch(ctx context.Context, req structs.PatchCart) (int64, error) {
 }
 
 func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error) {
-	r.logger.Info(ctx, "Get cart by tgID", zap.Int64("tg_id", tgID))
+	r.logger.Info(ctx, "Get cart by tgID", zap.Int64("tgid", tgID))
 	var (
 		res  structs.GetCartByTgID
 		cart structs.CartInfo
 	)
 	query := `
 		SELECT
-			tg_id,
+			tgid,
 			phone_number
 		FROM clients 
-		WHERE tg_id = $1
+		WHERE tgid = $1
 	`
 	err := r.db.QueryRow(ctx, query, tgID).Scan(
 		&res.TGID,
@@ -186,8 +186,8 @@ func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID,
 			) FILTER (WHERE p.id IS NOT NULL), '[]') AS products
 		FROM carts c
 		LEFT JOIN product p ON c.product_id = p.id
-		WHERE c.tg_id = $1
-		GROUP BY c.tg_id
+		WHERE c.tgid = $1
+		GROUP BY c.tgid
 	`
 	err = r.db.QueryRow(ctx, queryCartInfo, tgID).Scan(
 		&cart.TotalPrice,

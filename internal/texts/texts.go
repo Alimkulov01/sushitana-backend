@@ -11,6 +11,7 @@ const (
 	Welcome               TextKey = "welcome"
 	MenuButtonWebAppInfo  TextKey = "menu_button_web_app_info"
 	MenuButtonWebAppUrl   TextKey = "menu_button_web_app_url"
+	AllLanguageInfo       TextKey = "all_language_info"
 	Language              TextKey = "language"
 	SetNameClient         TextKey = "set_name_client"
 	Retry                 TextKey = "retry"
@@ -27,8 +28,13 @@ const (
 )
 
 var MapText = map[TextKey]utils.Language{
-	Language: {
+	AllLanguageInfo: {
 		UZ: "🇺🇿 Iltimos, suhbat uchun qulay tilni tanlang:\n\n🇷🇺 Пожалуйста, выберите удобный язык для общения:\n\n🇬🇧 Please choose a language for the conversation:",
+	},
+	Language: {
+		UZ: "🌍 Tilni o'zgartirish",
+		RU: "🌍 Сменить язык",
+		EN: "🌍 Change language",
 	},
 	SetNameClient: {
 		UZ: "Iltimos, ismingizni yuboring.",

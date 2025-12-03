@@ -8,6 +8,7 @@ import (
 	"sushitana/apps/gateway/handlers/control/user"
 	"sushitana/apps/gateway/handlers/employee"
 	"sushitana/apps/gateway/handlers/file"
+	"sushitana/apps/gateway/handlers/iiko"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -43,6 +44,7 @@ type Params struct {
 	Role      role.Handler
 	Employee  employee.Handler
 	Cart      cart.Handler
+	Iiko      iiko.Handler
 }
 
 func NewRouter(params Params) {
@@ -51,6 +53,13 @@ func NewRouter(params Params) {
 	out := r.Group(baseUrl)
 	out.Use(params.Ctx(), gin.Logger(), gin.Recovery())
 	permissionMiddleware := middleware.EndpointPermissionMiddleware(params.Middleware)
+	iikoGroup := out.Group("/iiko")
+	{
+		iikoGroup.POST("/access-token", params.Iiko.GetIikoAccessToken)
+		iikoGroup.GET("/organizations", params.Iiko.GetOrganization)
+		iikoGroup.POST("/nomenclature", params.Iiko.GetCategoryMenu)
+	}
+
 	adminGroup := out.Group("/admin")
 	{
 		// adminGroup.POST("/create", params.User.CreateAdmin)
@@ -116,7 +125,7 @@ func NewRouter(params Params) {
 		cartGroup.DELETE("/:id", params.Cart.ClearCart)
 		cartGroup.DELETE("/", params.Cart.DeleteCart)
 		cartGroup.PATCH("/", params.Cart.PatchCart)
-		cartGroup.GET("/:id", params.Cart.GetByTgID)
+		cartGroup.GET("/user/:id", params.Cart.GetByTgID)
 	}
 
 	server := http.Server{
