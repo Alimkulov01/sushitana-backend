@@ -122,17 +122,17 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Category, error)
 		resp  structs.Category
 		query = `
 			SELECT
-				id,
-				name,
-				post_id,
-				is_active,
-				"index",
+				id, 
+				name, 
+				post_id, 
+				COALESCE(is_active, false) AS is_active, 
+				"index", 
 				created_at, 
-				updated_at,
-				parent_id,
-				is_included_in_menu,
-				is_group_modifier,
-				is_deleted
+				updated_at, 
+				parent_id, 
+				COALESCE(is_included_in_menu, false) AS is_included_in_menu, 
+				COALESCE(is_group_modifier, false) AS is_group_modifier, 
+				COALESCE(is_deleted, false) AS is_deleted 
 			FROM category
 			WHERE id = $1
 		`
