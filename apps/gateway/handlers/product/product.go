@@ -3,7 +3,9 @@ package product
 import (
 	"errors"
 	"net/http"
+	"os"
 
+	"sushitana/internal/iiko"
 	product "sushitana/internal/product"
 	"sushitana/internal/responses"
 	"sushitana/internal/structs"
@@ -12,7 +14,6 @@ import (
 	"sushitana/pkg/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/cast"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -23,7 +24,7 @@ var (
 
 type (
 	Handler interface {
-		CreateProduct(c *gin.Context)
+		SyncProduct(c *gin.Context)
 		GetListProduct(c *gin.Context)
 		GetByIDProduct(c *gin.Context)
 		DeleteProduct(c *gin.Context)
@@ -33,11 +34,13 @@ type (
 		fx.In
 		Logger         logger.Logger
 		ProductService product.Service
+		IIKOService    iiko.Service
 	}
 
 	handler struct {
 		logger         logger.Logger
 		productService product.Service
+		iikoService    iiko.Service
 	}
 )
 
@@ -45,26 +48,41 @@ func New(p Params) Handler {
 	return &handler{
 		logger:         p.Logger,
 		productService: p.ProductService,
+		iikoService:    p.IIKOService,
 	}
 }
 
-func (h *handler) CreateProduct(c *gin.Context) {
+func (h *handler) SyncProduct(c *gin.Context) {
 	var (
 		response structs.Response
-		request  structs.CreateProduct
 		ctx      = c.Request.Context()
 	)
 
 	defer reply.Json(c.Writer, http.StatusOK, &response)
-
-	err := c.ShouldBindJSON(&request)
-	if err != nil {
-		h.logger.Warn(ctx, " error parse request", zap.Error(err))
-		response = responses.BadRequest
+	organizationId := os.Getenv("IIKO_ORGANIZATION_ID")
+	if organizationId == "" {
+		h.logger.Error(ctx, "IIKO_ORGANIZATION_ID not set")
+		response = responses.InternalErr
 		return
 	}
 
-	product, err := h.productService.Create(c, request)
+	token, err := h.iikoService.EnsureValidIikoToken(ctx)
+	if err != nil {
+		h.logger.Error(ctx, "err EnsureValidIikoToken", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	resp, err := h.iikoService.GetProduct(ctx, token, structs.GetCategoryMenuRequest{
+		OrganizationId: organizationId,
+	})
+	if err != nil {
+		h.logger.Error(ctx, "err on h.iikoService.GetCategory", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	err = h.productService.Create(c, resp.Products)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
 			response = responses.BadRequest
@@ -76,17 +94,15 @@ func (h *handler) CreateProduct(c *gin.Context) {
 	}
 
 	response = responses.Success
-	response.Payload = product
 }
 
 func (h *handler) GetByIDProduct(c *gin.Context) {
 	var (
 		response structs.Response
-		idStr    = c.Param("id")
+		id       = c.Param("id")
 		ctx      = c.Request.Context()
 	)
 	defer reply.Json(c.Writer, http.StatusOK, &response)
-	id := cast.ToInt64(idStr)
 	respond, err := h.productService.GetByID(c, id)
 	if err != nil {
 		if errors.Is(err, structs.ErrNotFound) {
@@ -136,11 +152,10 @@ func (h *handler) DeleteProduct(c *gin.Context) {
 
 	var (
 		response structs.Response
-		idStr    = c.Param("id")
+		id       = c.Param("id")
 		ctx      = c.Request.Context()
 	)
 	defer reply.Json(c.Writer, http.StatusOK, &response)
-	id := cast.ToInt64(idStr)
 	err := h.productService.Delete(c, id)
 	if err != nil {
 		if errors.Is(err, structs.ErrNotFound) {

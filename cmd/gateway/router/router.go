@@ -88,7 +88,7 @@ func NewRouter(params Params) {
 	}
 	productGroup := api.Group("/product")
 	{
-		productGroup.POST("/", params.Product.CreateProduct)
+		productGroup.POST("/sync", params.Product.SyncProduct)
 		productGroup.GET("/:id", params.Product.GetByIDProduct)
 		out.GET("/product", params.Product.GetListProduct)
 		productGroup.PATCH("/", params.Product.PatchProduct)

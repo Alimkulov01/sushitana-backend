@@ -23,10 +23,10 @@ type (
 	}
 
 	Service interface {
-		Create(ctx context.Context, req structs.CreateProduct) (structs.Product, error)
+		Create(ctx context.Context, req []structs.IIKOProduct) error
 		GetList(ctx context.Context, req structs.GetListProductRequest) (resp structs.GetListProductResponse, err error)
-		Delete(ctx context.Context, id int64) error
-		GetByID(ctx context.Context, id int64) (structs.Product, error)
+		Delete(ctx context.Context, id string) error
+		GetByID(ctx context.Context, id string) (structs.Product, error)
 		GetByProductName(ctx context.Context, name string) (structs.Product, error)
 		Patch(ctx context.Context, req structs.PatchProduct) (int64, error)
 		GetListCategoryName(ctx context.Context, req string) (resp []structs.Product, err error)
@@ -44,16 +44,38 @@ func New(p Params) Service {
 	}
 }
 
-func (s service) Create(ctx context.Context, req structs.CreateProduct) (structs.Product, error) {
-	id, err := s.productRepo.Create(ctx, req)
+func (s service) Create(ctx context.Context, req []structs.IIKOProduct) error {
+	products := []structs.CreateProduct{}
+	for _, p := range req {
+		product := structs.CreateProduct{}
+		product.ID = p.ID
+		product.Name.Ru = p.Name
+		product.GroupID = p.GroupID
+		product.ProductCategoryID = p.ProductCategoryID
+		product.Type = p.Type
+		product.OrderItemType = p.OrderItemType
+		product.MeasureUnit = p.MeasureUnit
+		product.SizePrices = p.SizePrices
+		product.DoNotPrintInCheque = p.DoNotPrintInCheque
+		product.ParentGroup = p.ParentGroup
+		product.Order = p.Order
+		product.PaymentSubject = p.PaymentSubject
+		product.Code = p.Code
+		product.IsDeleted = p.IsDeleted
+		product.CanSetOpenPrice = p.CanSetOpenPrice
+		product.Splittable = p.Splittable
+		product.Weight = p.Weight
+		products = append(products, product)
+	}
+	err := s.productRepo.Create(ctx, products)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
-			return id, err
+			return err
 		}
 		s.logger.Error(ctx, "->productRepo.Create", zap.Error(err))
-		return id, err
+		return err
 	}
-	return id, err
+	return err
 }
 
 func (s service) GetList(ctx context.Context, req structs.GetListProductRequest) (resp structs.GetListProductResponse, err error) {
@@ -75,7 +97,7 @@ func (s service) GetListCategoryName(ctx context.Context, req string) (resp []st
 	}
 	return resp, err
 }
-func (s service) Delete(ctx context.Context, id int64) error {
+func (s service) Delete(ctx context.Context, id string) error {
 	err := s.productRepo.Delete(ctx, id)
 	if err != nil {
 		s.logger.Error(ctx, "->productRepo.Delete", zap.Error(err))
@@ -84,7 +106,7 @@ func (s service) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-func (s service) GetByID(ctx context.Context, id int64) (resp structs.Product, err error) {
+func (s service) GetByID(ctx context.Context, id string) (resp structs.Product, err error) {
 	resp, err = s.productRepo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, structs.ErrNotFound) {

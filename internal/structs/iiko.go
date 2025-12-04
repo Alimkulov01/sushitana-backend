@@ -30,6 +30,11 @@ type GetCategoryResponse struct {
 	Groups        []IikoGroup `json:"groups"`
 	Revision      int64       `json:"revision"`
 }
+type GetProductResponse struct {
+	CorrelationId string        `json:"correlationId"`
+	Products      []IIKOProduct `json:"products"`
+	Revision      int64         `json:"revision"`
+}
 
 type IikoGroup struct {
 	Id               string `json:"id"`
@@ -38,27 +43,4 @@ type IikoGroup struct {
 	IsGroupModifier  bool   `json:"isGroupModifier"`
 	Name             string `json:"name"`
 	IsDeleted        bool   `json:"isDeleted"`
-}
-
-type IikoProduct struct {
-	Id             string          `json:"id"`
-	GroupId        string          `json:"groupId"`
-	Weight         float64         `json:"weight"`
-	Type           string          `json:"type"`
-	OrderItemType  string          `json:"orderItemType"`
-	MeasureUnit    string          `json:"measureUnit"`
-	SizePrices     []IikoSizePrice `json:"sizePrices"`
-	ParentGroup    string          `json:"parentGroup"`
-	PaymentSubject string          `json:"paymentSubject"`
-	Code           string          `json:"code"`
-	Name           string          `json:"name"`
-}
-
-type IikoSizePrice struct {
-	Price []IikoPrice `json:"price"`
-}
-
-type IikoPrice struct {
-	CurrentPrice     float64 `json:"currentPrice"`
-	IsIncludedInMenu bool    `json:"isIncludedInMenu"`
 }

@@ -33,6 +33,7 @@ type (
 	Service interface {
 		GetIikoAccessToken(ctx context.Context) (resp structs.IikoClientTokenResponse, err error)
 		GetCategory(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetCategoryResponse, error)
+		GetProduct(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetProductResponse, error)
 		UpdateIIKO(ctx context.Context, id int64, token string) (int64, error)
 		EnsureValidIikoToken(ctx context.Context) (string, error)
 	}
@@ -189,6 +190,132 @@ func (s *service) GetCategory(ctx context.Context, token string, req structs.Get
 	return result, nil
 }
 
+func (s *service) GetProduct(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetProductResponse, error) {
+	var result structs.GetProductResponse
+
+	t := token
+	if t == "" {
+		var err error
+		t, err = s.EnsureValidIikoToken(ctx)
+		if err != nil {
+			return result, fmt.Errorf("failed get token: %w", err)
+		}
+	}
+
+	do := func(tok string) (int, []byte, error) {
+		baseUrl := "https://api-ru.iiko.services/api/1/nomenclature"
+		b := utils.Marshal(req)
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseUrl, bytes.NewReader(b))
+		if err != nil {
+			return 0, nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Accept", "application/json")
+		if tok != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+tok)
+		}
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return 0, nil, err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, body, nil
+	}
+
+	status, body, err := do(t)
+	if err != nil {
+		return result, err
+	}
+
+	if status == http.StatusUnauthorized {
+		s.logger.Info(ctx, "GetProduct received 401; fetching new token and retrying")
+		tr, err := s.GetIikoAccessToken(ctx)
+		if err != nil {
+			return result, fmt.Errorf("failed to refresh token after 401: %w", err)
+		}
+		status, body, err = do(tr.Token)
+		if err != nil {
+			return result, err
+		}
+		if status == http.StatusUnauthorized {
+			return result, fmt.Errorf("unauthorized even after token refresh")
+		}
+	}
+
+	if status < 200 || status >= 300 {
+		return result, fmt.Errorf("iiko returned status %d: %s", status, string(body))
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		s.logger.Error(ctx, "Failed to unmarshal iiko response", zap.Error(err), zap.ByteString("body", body))
+		return result, err
+	}
+
+	if corr, ok := raw["correlationId"].(string); ok {
+		result.CorrelationId = corr
+	}
+	if productsAny, ok := raw["products"]; ok {
+		if productsSlice, ok := productsAny.([]any); ok {
+			for _, pi := range productsSlice {
+				pm, ok := pi.(map[string]any)
+				if !ok {
+					s.logger.Warn(ctx, "product item is not object", zap.Any("item", pi))
+					continue
+				}
+				var p structs.IIKOProduct
+				p.ID = safeStr(pm["id"])
+				p.Name = safeStr(pm["name"])
+				p.GroupID = safeStr(pm["groupId"])
+				if pm["productCategoryId"] == nil {
+					p.ProductCategoryID = ""
+				} else {
+					p.ProductCategoryID = safeStr(pm["productCategoryId"])
+				}
+				p.Type = safeStr(pm["type"])
+				p.OrderItemType = safeStr(pm["orderItemType"])
+				p.MeasureUnit = safeStr(pm["measureUnit"])
+				p.DoNotPrintInCheque = safeBool(pm["doNotPrintInCheque"])
+				p.ParentGroup = safeStr(pm["parentGroup"])
+				p.Order = safeInt(pm["order"])
+				p.PaymentSubject = safeStr(pm["paymentSubject"])
+				p.Code = safeStr(pm["code"])
+				p.IsDeleted = safeBool(pm["isDeleted"])
+				p.CanSetOpenPrice = safeBool(pm["canSetOpenPrice"])
+				p.Splittable = safeBool(pm["splittable"])
+				p.Weight = safeFloat(pm["weight"])
+
+				if spAny, ok := pm["sizePrices"]; ok {
+					if spSlice, ok := spAny.([]any); ok && len(spSlice) > 0 {
+						for _, sitem := range spSlice {
+							if sm, ok := sitem.(map[string]any); ok {
+								// To‘g‘ridan-to‘g‘ri json.Unmarshal orqali o‘qish — eng ishonchli!
+								b, _ := json.Marshal(sm)
+								var sp structs.SizePrice
+								if err := json.Unmarshal(b, &sp); err == nil {
+									p.SizePrices = append(p.SizePrices, sp)
+								} else {
+									s.logger.Warn(ctx, "Failed to unmarshal sizePrice", zap.Error(err))
+								}
+							}
+						}
+					}
+				}
+				if p.ID == "" {
+					s.logger.Warn(ctx, "product without id, skipping", zap.Any("raw", pm))
+					continue
+				}
+
+				result.Products = append(result.Products, p)
+			}
+		}
+	}
+
+	return result, nil
+}
+
 func (s service) UpdateIIKO(ctx context.Context, id int64, token string) (int64, error) {
 	rowsAffected, err := s.iikorepo.UpdateIIKO(ctx, id, token)
 	if err != nil {
@@ -212,6 +339,38 @@ func safeStr(v any) string {
 		}
 	}
 	return ""
+}
+
+func safeFloat(v any) float64 {
+	if v == nil {
+		return 0.0
+	}
+	if s, ok := v.(float64); ok {
+		return s
+	}
+	if b, ok := v.(json.RawMessage); ok {
+		var out float64
+		if err := json.Unmarshal(b, &out); err == nil {
+			return out
+		}
+	}
+	return 0.0
+}
+
+func safeInt(v any) int64 {
+	if v == nil {
+		return 0
+	}
+	if s, ok := v.(int64); ok {
+		return s
+	}
+	if b, ok := v.(json.RawMessage); ok {
+		var out int64
+		if err := json.Unmarshal(b, &out); err == nil {
+			return out
+		}
+	}
+	return 0
 }
 
 func safeBool(v any) bool {

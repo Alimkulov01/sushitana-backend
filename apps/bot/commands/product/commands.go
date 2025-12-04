@@ -128,7 +128,7 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 	}
 	name := getProductNameByLang(lang, resp.Name)
 	desription := getProductDescriptionByLang(lang, resp.Description)
-	caption := fmt.Sprintf("%s\n\n%s\n\n%d", name, desription, resp.Price)
+	caption := fmt.Sprintf("%s\n\n%s\n\n", name, desription)
 	imgSource := strings.TrimSpace(resp.ImgUrl)
 	var photo tgbotapi.Chattable
 

@@ -2,6 +2,7 @@ package productrepo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,11 +27,11 @@ type (
 	}
 
 	Repo interface {
-		Create(ctx context.Context, req structs.CreateProduct) (structs.Product, error)
-		GetByID(ctx context.Context, id int64) (structs.Product, error)
+		Create(ctx context.Context, req []structs.CreateProduct) error
+		GetByID(ctx context.Context, id string) (structs.Product, error)
 		GetByProductName(ctx context.Context, name string) (structs.Product, error)
 		GetList(ctx context.Context, req structs.GetListProductRequest) (structs.GetListProductResponse, error)
-		Delete(ctx context.Context, ProductID int64) error
+		Delete(ctx context.Context, ProductID string) error
 		Patch(ctx context.Context, req structs.PatchProduct) (int64, error)
 		GetListCategoryName(ctx context.Context, req string) ([]structs.Product, error)
 	}
@@ -48,85 +49,200 @@ func New(p Params) Repo {
 	}
 }
 
-func (r *repo) Create(ctx context.Context, req structs.CreateProduct) (resp structs.Product, err error) {
-	r.logger.Info(ctx, "Create product", zap.Any("req", req))
-	query := `
-		INSERT INTO product(
-			name,
-			category_id,
-			img_url,
-			price,
-			count,
-			description,
-			is_active,
-			index,
-			is_new,
-			discount_price,
-			post_id
-		) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		RETURNING id, name, category_id, img_url, price, count, description, is_active, index, is_new, discount_price, post_id, created_at, updated_at
-	`
-	err = r.db.QueryRow(ctx, query, req.Name, req.CategoryID, req.ImgUrl, req.Price, req.Count, req.Description, req.IsActive, req.Index, req.IsNew, req.DiscountPrice, req.PostID).Scan(
-		&resp.ID,
-		&resp.Name,
-		&resp.CategoryID,
-		&resp.ImgUrl,
-		&resp.Price,
-		&resp.Count,
-		&resp.Description,
-		&resp.IsActive,
-		&resp.Index,
-		&resp.IsNew,
-		&resp.DiscountPrice,
-		&resp.PostID,
-		&resp.CreatedAt,
-		&resp.UpdatedAt,
-	)
-	if err != nil {
-		r.logger.Error(ctx, "err on r.db.QueryRow", zap.Error(err))
-		return structs.Product{}, fmt.Errorf("create product failed: %w", err)
+func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
+	fmt.Println(req[1])
+	r.logger.Info(ctx, "Create product", zap.Any("req", len(req)))
+	if len(req) == 0 {
+		return nil
 	}
-	return resp, nil
+	batchSize := 1000
+	totalInserted := int64(0)
+
+	query := `
+		INSERT INTO product (
+			id,
+			group_id,
+			name,
+			product_category_id,
+			type,
+			order_item_type,
+			measure_unit,
+			size_prices,
+			do_not_print_in_cheque,
+			parent_group,
+			"order",
+			payment_subject,
+			code,
+			is_deleted,
+			can_set_open_price,
+			splittable,
+			weight)
+		SELECT
+			id::text,
+			COALESCE(t.group_id, '') AS group_id,
+			name::jsonb,
+			product_category_id::text,
+			type::text,
+			COALESCE(t.order_item_type, '') AS order_item_type,
+			COALESCE(t.measure_unit, '') AS measure_unit,
+			COALESCE(t.size_prices, '[]'::jsonb) AS size_prices,
+			do_not_print_in_cheque::boolean,
+			parent_group::text,
+			"order"::int,
+			payment_subject::text,
+			code::text,
+			is_deleted::boolean,
+			can_set_open_price::boolean,
+			splittable::boolean,
+			weight::float
+		FROM jsonb_to_recordset($1::jsonb) AS t(
+			id text,
+			group_id text,
+			name jsonb,
+			product_category_id text,
+			type text,
+			order_item_type text,
+			measure_unit text,
+			size_prices jsonb,
+			do_not_print_in_cheque boolean,
+			parent_group text,
+			"order" int,
+			payment_subject text,
+			code text,
+			is_deleted boolean,
+			can_set_open_price boolean,
+			splittable boolean,
+			weight float
+		) ON CONFLICT (id) DO UPDATE
+		SET
+			group_id = EXCLUDED.group_id,
+			name = product.name || (CASE WHEN (EXCLUDED.name ? 'ru') THEN jsonb_build_object('ru', EXCLUDED.name->>'ru') ELSE '{}'::jsonb END),
+			product_category_id = EXCLUDED.product_category_id,
+			type = EXCLUDED.type,
+			order_item_type = EXCLUDED.order_item_type,
+			measure_unit = EXCLUDED.measure_unit,
+			size_prices = EXCLUDED.size_prices,
+			do_not_print_in_cheque = EXCLUDED.do_not_print_in_cheque,
+			parent_group = EXCLUDED.parent_group,
+			"order" = EXCLUDED."order",
+			payment_subject = EXCLUDED.payment_subject,
+			code = EXCLUDED.code,
+			is_deleted = EXCLUDED.is_deleted,
+			can_set_open_price = EXCLUDED.can_set_open_price,
+			splittable = EXCLUDED.splittable,
+			weight = EXCLUDED.weight,
+			updated_at = now()
+		WHERE
+			(CASE WHEN (EXCLUDED.name ? 'ru')
+			THEN (product.name->>'ru') IS DISTINCT FROM (EXCLUDED.name->>'ru')
+			ELSE false END)
+		OR product.group_id IS DISTINCT FROM EXCLUDED.group_id
+		OR COALESCE(product.do_not_print_in_cheque, false) IS DISTINCT FROM COALESCE(EXCLUDED.do_not_print_in_cheque, false)
+		OR COALESCE(product.is_deleted, false) IS DISTINCT FROM COALESCE(EXCLUDED.is_deleted, false)
+		OR COALESCE(product.can_set_open_price, false) IS DISTINCT FROM COALESCE(EXCLUDED.can_set_open_price, false)
+		OR COALESCE(product.splittable, false) IS DISTINCT FROM COALESCE(EXCLUDED.splittable, false)
+	`
+	for start := 0; start < len(req); start += batchSize {
+		end := start + batchSize
+		if end > len(req) {
+			end = len(req)
+		}
+
+		part := req[start:end]
+		b, err := json.Marshal(part)
+		if err != nil {
+			r.logger.Error(ctx, "failed to marshal products batch", zap.Error(err), zap.Int("start", start), zap.Int("end", end))
+			return fmt.Errorf("marshal batch: %w", err)
+		}
+
+		tx, err := r.db.Begin(ctx)
+		if err != nil {
+			r.logger.Error(ctx, "begin tx failed", zap.Error(err))
+			return fmt.Errorf("begin tx: %w", err)
+		}
+
+		_, err = tx.Exec(ctx, query, string(b))
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			r.logger.Error(ctx, "insert batch failed", zap.Error(err))
+			return fmt.Errorf("insert batch failed: %w", err)
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			_ = tx.Rollback(ctx)
+			r.logger.Error(ctx, "tx commit failed", zap.Error(err))
+			return fmt.Errorf("tx commit: %w", err)
+		}
+	}
+	r.logger.Info(ctx, "CreateProducts finished", zap.Int64("inserted", totalInserted))
+	return nil
+
 }
 
-func (r *repo) GetByID(ctx context.Context, id int64) (structs.Product, error) {
+func (r *repo) GetByID(ctx context.Context, id string) (structs.Product, error) {
 	var (
 		resp  structs.Product
 		query = `
 			SELECT
 				id,
+				group_id,
 				name,
-				category_id,
-				img_url,
-				price,
-				count,
-				description,
-				is_active,
+				COALESCE(product_category_id, '') AS product_category_id,
+				type,
+				order_item_type,
+				measure_unit,
+				size_prices,
+				COALESCE(do_not_print_in_cheque, false) AS do_not_print_in_cheque,
+				COALESCE(parent_group, '') AS parent_group,
+				"order",
+				COALESCE(payment_subject, '') AS payment_subject,
+				code,
+				COALESCE(is_deleted, false) AS is_deleted,
+				COALESCE(can_set_open_price, false) AS can_set_open_price,
+				splittable,
 				index,
-				is_new,
-				discount_price,
-				post_id,
+				COALESCE(is_new, false) AS is_new,
+				img_url,
+				COALESCE(is_active, false) AS is_active, 
+				COALESCE(is_have_box, false) AS is_have_box,
+				box_count,
+				box_price,
+				description,
 				created_at,
-				updated_at
+				updated_at,
+				weight
 			FROM product
 			WHERE id = $1
 		`
 	)
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&resp.ID,
+		&resp.GroupID,
 		&resp.Name,
-		&resp.CategoryID,
-		&resp.ImgUrl,
-		&resp.Price,
-		&resp.Count,
-		&resp.Description,
-		&resp.IsActive,
+		&resp.ProductCategoryID,
+		&resp.Type,
+		&resp.OrderItemType,
+		&resp.MeasureUnit,
+		&resp.SizePrices,
+		&resp.DoNotPrintInCheque,
+		&resp.ParentGroup,
+		&resp.Order,
+		&resp.PaymentSubject,
+		&resp.Code,
+		&resp.IsDeleted,
+		&resp.CanSetOpenPrice,
+		&resp.Splittable,
 		&resp.Index,
 		&resp.IsNew,
-		&resp.DiscountPrice,
-		&resp.PostID,
+		&resp.ImgUrl,
+		&resp.IsActive,
+		&resp.IsHaveBox,
+		&resp.BoxCount,
+		&resp.BoxPrice,
+		&resp.Description,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
+		&resp.Weight,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -145,19 +261,32 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 	query := `
 		SELECT
 			id,
+			group_id,
 			name,
-			category_id,
-			img_url,
-			price,
-			count,
-			description,
-			is_active,
+			product_category_id,
+			type,
+			order_item_type,
+			measure_unit,
+			size_prices,
+			COALESCE(do_not_print_in_cheque, false) AS do_not_print_in_cheque,
+			parent_group,
+			"order",
+			payment_subject,
+			code,
+			COALESCE(is_deleted, false) AS is_deleted 
+			COALESCE(can_set_open_price, false) AS can_set_open_price,
+			COLAESCE(splittable, false) AS splittable,
 			index,
-			is_new,
-			discount_price,
-			post_id,
+			COALESCE(is_new, false) AS is_new,
+			img_url,
+			COALESCE(is_active, false) AS is_active, 
+			COALESCE(is_have_box, false) AS is_have_box,
+			box_count,
+			box_price,
+			description,
 			created_at,
-			updated_at
+			updated_at,
+			weight
 		FROM product
 		WHERE 
 			name->>'uz' ILIKE $1 OR
@@ -168,19 +297,32 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 
 	err = r.db.QueryRow(ctx, query, name).Scan(
 		&resp.ID,
+		&resp.GroupID,
 		&resp.Name,
-		&resp.CategoryID,
-		&resp.ImgUrl,
-		&resp.Price,
-		&resp.Count,
-		&resp.Description,
-		&resp.IsActive,
+		&resp.ProductCategoryID,
+		&resp.Type,
+		&resp.OrderItemType,
+		&resp.MeasureUnit,
+		&resp.SizePrices,
+		&resp.DoNotPrintInCheque,
+		&resp.ParentGroup,
+		&resp.Order,
+		&resp.PaymentSubject,
+		&resp.Code,
+		&resp.IsDeleted,
+		&resp.CanSetOpenPrice,
+		&resp.Splittable,
 		&resp.Index,
 		&resp.IsNew,
-		&resp.DiscountPrice,
-		&resp.PostID,
+		&resp.ImgUrl,
+		&resp.IsActive,
+		&resp.IsHaveBox,
+		&resp.BoxCount,
+		&resp.BoxPrice,
+		&resp.Description,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
+		&resp.Weight,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -220,19 +362,32 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 		SELECT
 			COUNT(*) OVER(),
 			id,
+			group_id,
 			name,
-			category_id,
-			img_url,
-			price,
-			count,
-			description,
-			is_active,
+			COALESCE(product_category_id, '') AS product_category_id,
+			type,
+			order_item_type,
+			measure_unit,
+			size_prices,
+			COALESCE(do_not_print_in_cheque, false) AS do_not_print_in_cheque,
+			COALESCE(parent_group, '') AS parent_group,
+			"order",
+			COALESCE(payment_subject, '') AS payment_subject,
+			code,
+			COALESCE(is_deleted, false) AS is_deleted,
+			COALESCE(can_set_open_price, false) AS can_set_open_price,
+			splittable,
 			index,
-			is_new,
-			discount_price,
-			post_id,
+			COALESCE(is_new, false) AS is_new,
+			img_url,
+			COALESCE(is_active, false) AS is_active, 
+			COALESCE(is_have_box, false) AS is_have_box,
+			box_count,
+			box_price,
+			description,
 			created_at,
-			updated_at
+			updated_at,
+			weight
 		FROM product
 		%s
 		LIMIT $1 OFFSET $2
@@ -252,19 +407,32 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 		err := rows.Scan(
 			&resp.Count,
 			&p.ID,
+			&p.GroupID,
 			&p.Name,
-			&p.CategoryID,
-			&p.ImgUrl,
-			&p.Price,
-			&p.Count,
-			&p.Description,
-			&p.IsActive,
+			&p.ProductCategoryID,
+			&p.Type,
+			&p.OrderItemType,
+			&p.MeasureUnit,
+			&p.SizePrices,
+			&p.DoNotPrintInCheque,
+			&p.ParentGroup,
+			&p.Order,
+			&p.PaymentSubject,
+			&p.Code,
+			&p.IsDeleted,
+			&p.CanSetOpenPrice,
+			&p.Splittable,
 			&p.Index,
 			&p.IsNew,
-			&p.DiscountPrice,
-			&p.PostID,
+			&p.ImgUrl,
+			&p.IsActive,
+			&p.IsHaveBox,
+			&p.BoxCount,
+			&p.BoxPrice,
+			&p.Description,
 			&p.CreatedAt,
 			&p.UpdatedAt,
+			&p.Weight,
 		)
 		if err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
@@ -291,30 +459,6 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchProduct) (int64, erro
 		setValues = append(setValues, "name = :name")
 		params["name"] = *req.Name
 	}
-	if req.CategoryID != nil {
-		setValues = append(setValues, "category_id = :category_id")
-		params["category_id"] = *req.CategoryID
-	}
-	if req.ImgUrl != nil {
-		setValues = append(setValues, "img_url = :img_url")
-		params["img_url"] = *req.ImgUrl
-	}
-	if req.Price != nil {
-		setValues = append(setValues, "price = :price")
-		params["price"] = *req.Price
-	}
-	if req.Count != nil {
-		setValues = append(setValues, "count = :count")
-		params["count"] = *req.Count
-	}
-	if req.Description != nil {
-		setValues = append(setValues, "description = :description")
-		params["description"] = *req.Description
-	}
-	if req.IsActive != nil {
-		setValues = append(setValues, "is_active = :is_active")
-		params["is_active"] = *req.IsActive
-	}
 	if req.Index != nil {
 		setValues = append(setValues, "index = :index")
 		params["index"] = *req.Index
@@ -323,17 +467,33 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchProduct) (int64, erro
 		setValues = append(setValues, "is_new = :is_new")
 		params["is_new"] = *req.IsNew
 	}
-	if req.DiscountPrice != nil {
-		setValues = append(setValues, "discount_price = :discount_price")
-		params["discount_price"] = *req.DiscountPrice
+	if req.ImgUrl != nil {
+		setValues = append(setValues, "img_url = :img_url")
+		params["img_url"] = *req.ImgUrl
 	}
-	if req.PostID != nil {
-		setValues = append(setValues, "post_id = :post_id")
-		params["post_id"] = *req.PostID
+	if req.IsActive != nil {
+		setValues = append(setValues, "is_active = :is_active")
+		params["is_active"] = *req.IsActive
+	}
+	if req.IsHaveBox != nil {
+		setValues = append(setValues, "is_have_box = :is_have_box")
+		params["is_have_box"] = *req.IsHaveBox
+	}
+	if req.BoxCount != nil {
+		setValues = append(setValues, "box_count = :box_count")
+		params["box_count"] = *req.BoxCount
+	}
+	if req.BoxPrice != nil {
+		setValues = append(setValues, "box_price = :box_price")
+		params["box_price"] = *req.BoxPrice
+	}
+	if req.Description != nil {
+		setValues = append(setValues, "description = :description")
+		params["description"] = *req.Description
 	}
 	setValues = append(setValues, "updated_At = NOW()")
 	if len(setValues) == 0 {
-		return 0, fmt.Errorf("no fields to update for product with ID %d", req.ID)
+		return 0, fmt.Errorf("no fields to update for product with ID %s", req.ID)
 	}
 	query := fmt.Sprintf(`
         UPDATE product
@@ -343,7 +503,7 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchProduct) (int64, erro
 
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("error starting transaction for product ID %d: %w", req.ID, err)
+		return 0, fmt.Errorf("error starting transaction for product ID %s: %w", req.ID, err)
 	}
 
 	query, args := utils.ReplaceQueryParams(query, params)
@@ -351,31 +511,31 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchProduct) (int64, erro
 	if err != nil {
 		if errRollback := tx.Rollback(ctx); errRollback != nil {
 			r.logger.Error(ctx, "error rolling back transaction", zap.Error(errRollback))
-			return 0, fmt.Errorf("error rolling back transaction for product ID %d: %w", req.ID, errRollback)
+			return 0, fmt.Errorf("error rolling back transaction for product ID %s: %w", req.ID, errRollback)
 		}
 		r.logger.Error(ctx, "error executing update", zap.Error(err))
-		return 0, fmt.Errorf("error updating product with ID %d: %w", req.ID, err)
+		return 0, fmt.Errorf("error updating product with ID %s: %w", req.ID, err)
 	}
 
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
 		if errRollback := tx.Rollback(ctx); errRollback != nil {
 			r.logger.Error(ctx, "error rolling back transaction", zap.Error(errRollback))
-			return 0, fmt.Errorf("error rolling back transaction for product ID %d: %w", req.ID, errRollback)
+			return 0, fmt.Errorf("error rolling back transaction for product ID %s: %w", req.ID, errRollback)
 		}
 		r.logger.Warn(ctx, "no product found with the given ID", zap.String("product_id", cast.ToString(req.ID)))
-		return 0, fmt.Errorf("no product found with ID %d", req.ID)
+		return 0, fmt.Errorf("no product found with ID %s", req.ID)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		r.logger.Error(ctx, "error committing transaction", zap.Error(err))
-		return 0, fmt.Errorf("error committing transaction for product ID %d: %w", req.ID, err)
+		return 0, fmt.Errorf("error committing transaction for product ID %s: %w", req.ID, err)
 	}
 
 	return rowsAffected, nil
 }
 
-func (r *repo) Delete(ctx context.Context, productID int64) error {
+func (r *repo) Delete(ctx context.Context, productID string) error {
 	r.logger.Info(ctx, "Delete product", zap.String("product_id", cast.ToString(productID)))
 
 	query := `
@@ -386,13 +546,13 @@ func (r *repo) Delete(ctx context.Context, productID int64) error {
 	result, err := r.db.Exec(ctx, query, productID)
 	if err != nil {
 		r.logger.Error(ctx, "error executing delete", zap.Error(err))
-		return fmt.Errorf("error deleting product with ID %d: %w", productID, err)
+		return fmt.Errorf("error deleting product with ID %s: %w", productID, err)
 	}
 
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
 		r.logger.Warn(ctx, "no product found with the given ID", zap.String("product_id", cast.ToString(productID)))
-		return fmt.Errorf("no product found with ID %d", productID)
+		return fmt.Errorf("no product found with ID %s", productID)
 	}
 
 	return nil
@@ -405,19 +565,31 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 	query := `
 		SELECT
 			p.id,
+			p.group_id,
 			p.name,
-			p.category_id,
-			p.img_url,
-			p.price,
-			p.count,
-			p.description,
-			p.is_active,
+			p.product_category_id,
+			p.type,
+			p.order_item_type,
+			p.measure_unit,
+			p.size_prices,
+			COALESCE(p.do_not_print_in_cheque, false) AS do_not_print_in_cheque,
+			p.parent_group,
+			p.order,
+			p.payment_subject,
+			p.code,
+			p.COALESCE(p.is_deleted, false) AS is_deleted 
+			p.COALESCE(p.can_set_open_price, false) AS can_set_open_price,
+			p.COLAESCE(p.splittable, false) AS splittable,
 			p.index,
-			p.is_new,
-			p.discount_price,
-			p.post_id,
+			p.COALESCE(p.is_new, false) AS is_new,
+			p.img_url,
+			p.COALESCE(p.is_active, false) AS is_active, 
+			p.COALESCE(p.is_have_box, false) AS is_have_box,
+			p.box_count,
+			p.box_price,
 			p.created_at,
-			p.updated_at
+			p.updated_at,
+			p.weight
 		FROM product AS p
 		JOIN category AS c ON c.id = p.category_id
 		WHERE c.name->>'uz' ILIKE $1 OR
@@ -439,19 +611,31 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 		var p structs.Product
 		err := rows.Scan(
 			&p.ID,
+			&p.GroupID,
 			&p.Name,
-			&p.CategoryID,
-			&p.ImgUrl,
-			&p.Price,
-			&p.Count,
-			&p.Description,
-			&p.IsActive,
+			&p.ProductCategoryID,
+			&p.Type,
+			&p.OrderItemType,
+			&p.MeasureUnit,
+			&p.SizePrices,
+			&p.DoNotPrintInCheque,
+			&p.ParentGroup,
+			&p.Order,
+			&p.PaymentSubject,
+			&p.Code,
+			&p.IsDeleted,
+			&p.CanSetOpenPrice,
+			&p.Splittable,
 			&p.Index,
 			&p.IsNew,
-			&p.DiscountPrice,
-			&p.PostID,
+			&p.ImgUrl,
+			&p.IsActive,
+			&p.IsHaveBox,
+			&p.BoxCount,
+			&p.BoxPrice,
 			&p.CreatedAt,
 			&p.UpdatedAt,
+			&p.Weight,
 		)
 		if err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))

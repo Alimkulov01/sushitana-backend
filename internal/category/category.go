@@ -44,8 +44,8 @@ func New(p Params) Service {
 
 func (s service) Create(ctx context.Context, token string, req []structs.IikoGroup) error {
 	categories := []structs.CreateCategory{}
-	category := structs.CreateCategory{}
 	for _, group := range req {
+		category := structs.CreateCategory{}
 		category.ID = group.Id
 		category.Name.Ru = group.Name
 		category.ParentID = group.ParentGroup
