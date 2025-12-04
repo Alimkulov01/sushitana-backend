@@ -30,7 +30,8 @@ type (
 		Clear(ctx context.Context, tgID int64) error
 		Delete(ctx context.Context, req structs.DeleteCart) error
 		Patch(ctx context.Context, req structs.PatchCart) (int64, error)
-		GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error)
+		GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error)
+		GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error)
 	}
 
 	repo struct {
@@ -47,17 +48,20 @@ func New(p Params) Repo {
 }
 
 func (r repo) Create(ctx context.Context, req structs.CreateCart) error {
-	r.logger.Info(ctx, "Create cart", zap.Any("req", req))
-	query := `
-		INSERT INTO carts(tgid, product_id, count) VALUES ($1, $2, $3)
-	`
-	_, err := r.db.Exec(ctx, query, req.TGID, req.ProductID, req.Count)
-	if err != nil {
-		r.logger.Error(ctx, "failed to create cart", zap.Error(err))
+	r.logger.Info(ctx, "Create cart (upsert)", zap.Any("req", req))
+
+	const upsertQuery = `
+        INSERT INTO carts (tgid, product_id, count)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (tgid, product_id)
+        DO UPDATE SET count = EXCLUDED.count
+    `
+
+	if _, err := r.db.Exec(ctx, upsertQuery, req.TGID, req.ProductID, req.Count); err != nil {
+		r.logger.Error(ctx, "failed to upsert cart", zap.Error(err))
 		return err
 	}
-	return err
-
+	return nil
 }
 
 func (r repo) Clear(ctx context.Context, tgID int64) error {
@@ -145,7 +149,68 @@ func (r repo) Patch(ctx context.Context, req structs.PatchCart) (int64, error) {
 	return rowsAffected, nil
 }
 
-func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error) {
+func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error) {
+	r.logger.Info(ctx, "Get cart by tgID", zap.Int64("tgid", tgID))
+	var (
+		cart structs.CartInfo
+	)
+	queryCartInfo := `
+		WITH t AS (SELECT $1::bigint AS tgid)
+		SELECT
+		COALESCE(
+			SUM(
+			(COALESCE(
+				sp.selected_price,
+				(p.size_prices->0->'price'->>'currentPrice')::numeric,
+				0
+			)) * COALESCE(c.count, 0)
+			),
+			0
+		) AS total_price,
+		COALESCE(
+			JSONB_AGG(
+			JSONB_BUILD_OBJECT(
+				'id', p.id,
+				'name', p.name,
+				'img_url', p.img_url,
+				'price', (COALESCE(
+							sp.selected_price,
+							(p.size_prices->0->'price'->>'currentPrice')::numeric,
+							0
+						))::numeric,
+				'count', COALESCE(c.count, 0),
+				'size_id_used', sp.selected_sizeid
+			)
+			) FILTER (WHERE p.id IS NOT NULL),
+			'[]'::jsonb
+		) AS products
+		FROM t
+		LEFT JOIN carts c ON c.tgid = t.tgid
+		LEFT JOIN product p ON c.product_id = p.id
+		LEFT JOIN LATERAL (
+		SELECT
+			(sp->'price'->>'currentPrice')::numeric AS selected_price,
+			NULLIF(sp->>'sizeId','') AS selected_sizeid
+		FROM jsonb_array_elements(coalesce(p.size_prices, '[]'::jsonb)) sp
+		ORDER BY
+			CASE
+			WHEN (sp->>'sizeId' IS NULL OR trim(sp->>'sizeId') = '') THEN 0
+			ELSE 1
+			END
+		LIMIT 1
+		) sp ON true
+		GROUP BY t.tgid;
+		`
+
+	if err := r.db.QueryRow(ctx, queryCartInfo, tgID).Scan(&cart.TotalPrice, &cart.Products); err != nil {
+		r.logger.Error(ctx, "failed to get cart info by tgID", zap.Error(err))
+		return cart, err
+	}
+
+	return cart, nil
+}
+
+func (r repo) GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error) {
 	r.logger.Info(ctx, "Get cart by tgID", zap.Int64("tgid", tgID))
 	var (
 		res  structs.GetCartByTgID
@@ -174,21 +239,48 @@ func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID,
 	queryCartInfo := `
 		WITH t AS (SELECT $1::bigint AS tgid)
 		SELECT
-			COALESCE(SUM(p.price * c.count), 0) AS total_price,
-			COALESCE(
-				JSONB_AGG(
-					JSONB_BUILD_OBJECT(
-						'id', p.id,
-						'name', p.name,
-						'img_url', p.img_url,
-						'price', p.price,
-						'count', c.count
-					)
-				) FILTER (WHERE p.id IS NOT NULL),
-			'[]') AS products
+		COALESCE(
+			SUM(
+			(COALESCE(
+				sp.selected_price,
+				(p.size_prices->0->'price'->>'currentPrice')::numeric,
+				0
+			)) * COALESCE(c.count, 0)
+			),
+			0
+		) AS total_price,
+		COALESCE(
+			JSONB_AGG(
+			JSONB_BUILD_OBJECT(
+				'id', p.id,
+				'name', p.name,
+				'img_url', p.img_url,
+				'price', (COALESCE(
+							sp.selected_price,
+							(p.size_prices->0->'price'->>'currentPrice')::numeric,
+							0
+						))::numeric,
+				'count', COALESCE(c.count, 0),
+				'size_id_used', sp.selected_sizeid
+			)
+			) FILTER (WHERE p.id IS NOT NULL),
+			'[]'::jsonb
+		) AS products
 		FROM t
 		LEFT JOIN carts c ON c.tgid = t.tgid
 		LEFT JOIN product p ON c.product_id = p.id
+		LEFT JOIN LATERAL (
+		SELECT
+			(sp->'price'->>'currentPrice')::numeric AS selected_price,
+			NULLIF(sp->>'sizeId','') AS selected_sizeid
+		FROM jsonb_array_elements(coalesce(p.size_prices, '[]'::jsonb)) sp
+		ORDER BY
+			CASE
+			WHEN (sp->>'sizeId' IS NULL OR trim(sp->>'sizeId') = '') THEN 0
+			ELSE 1
+			END
+		LIMIT 1
+		) sp ON true
 		GROUP BY t.tgid;
 		`
 

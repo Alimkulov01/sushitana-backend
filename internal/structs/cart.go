@@ -1,16 +1,16 @@
 package structs
 
 type Cart struct {
-	ID        int64 `json:"id"`
-	TGID      int64 `json:"tg_id"`
-	ProductID int64 `json:"product_id"`
-	Quantity  int64 `json:"quantity"`
+	ID        int64  `json:"id"`
+	TGID      int64  `json:"tg_id"`
+	ProductID string `json:"product_id"`
+	Quantity  int64  `json:"quantity"`
 }
 
 type CreateCart struct {
-	TGID      int64 `json:"tg_id"`
-	ProductID int64 `json:"product_id"`
-	Count     int64 `json:"count"`
+	TGID      int64  `json:"tg_id"`
+	ProductID string `json:"product_id"`
+	Count     int64  `json:"count"`
 }
 
 type DeleteCart struct {
@@ -19,9 +19,9 @@ type DeleteCart struct {
 }
 
 type PatchCart struct {
-	TGID      *int64 `json:"tg_id"`
-	ProductID *int64 `json:"product_id"`
-	Count     *int64 `json:"count"`
+	TGID      *int64  `json:"tg_id"`
+	ProductID *string `json:"product_id"`
+	Count     *int64  `json:"count"`
 }
 
 type GetCartByTgID struct {
@@ -39,7 +39,7 @@ type CartInfo struct {
 }
 
 type ProductCart struct {
-	Id     int64  `json:"id"`
+	Id     string `json:"id"`
 	Count  int64  `json:"count"`
 	Price  int64  `json:"price"`
 	Name   Name   `json:"name"`

@@ -27,7 +27,8 @@ type (
 		Clear(ctx context.Context, tgID int64) error
 		Delete(ctx context.Context, req structs.DeleteCart) error
 		Patch(ctx context.Context, req structs.PatchCart) (int64, error)
-		GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error)
+		GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error)
+		GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error)
 	}
 	service struct {
 		cartRepo cartRepo.Repo
@@ -81,12 +82,23 @@ func (s *service) Patch(ctx context.Context, req structs.PatchCart) (int64, erro
 	return updatedRows, nil
 }
 
-func (s *service) GetByTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error) {
+func (s *service) GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error) {
+	{
+		cart, err := s.cartRepo.GetByUserTgID(ctx, tgID)
+		if err != nil {
+			s.logger.Error(ctx, "->cartRepo.GetByTgID", zap.Error(err))
+			return structs.GetCartByTgID{}, err
+		}
+		return cart, nil
+	}
+}
+
+func (s *service) GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error) {
 	{
 		cart, err := s.cartRepo.GetByTgID(ctx, tgID)
 		if err != nil {
 			s.logger.Error(ctx, "->cartRepo.GetByTgID", zap.Error(err))
-			return structs.GetCartByTgID{}, err
+			return structs.CartInfo{}, err
 		}
 		return cart, nil
 	}

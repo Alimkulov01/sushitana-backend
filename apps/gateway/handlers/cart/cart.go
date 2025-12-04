@@ -25,6 +25,7 @@ type (
 		ClearCart(c *gin.Context)
 		DeleteCart(c *gin.Context)
 		PatchCart(c *gin.Context)
+		GetByUserTgID(c *gin.Context)
 		GetByTgID(c *gin.Context)
 	}
 	Params struct {
@@ -156,6 +157,29 @@ func (h *handler) PatchCart(c *gin.Context) {
 	}
 	response = responses.Success
 	response.Payload = rowsAffected
+}
+
+func (h *handler) GetByUserTgID(c *gin.Context) {
+	var (
+		response structs.Response
+		tg_id    = c.Param("id")
+		ctx      = c.Request.Context()
+	)
+	defer reply.Json(c.Writer, http.StatusOK, &response)
+	id := cast.ToInt64(tg_id)
+	cartData, err := h.cartService.GetByUserTgID(c, id)
+	if err != nil {
+		if errors.Is(err, structs.ErrNotFound) {
+			response = responses.NotFound
+			return
+		}
+		h.logger.Error(ctx, " err on h.cartService.GetByTgID", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	response = responses.Success
+	response.Payload = cartData
 }
 
 func (h *handler) GetByTgID(c *gin.Context) {

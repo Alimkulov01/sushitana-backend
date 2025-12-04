@@ -123,13 +123,14 @@ func NewRouter(params Params) {
 	{
 		userGroup.DELETE("/:id", params.Cart.ClearCart)
 		userGroup.PATCH("/", params.Cart.PatchCart)
-		userGroup.GET("/me/:id", params.Cart.GetByTgID)
+		userGroup.GET("/me/:id", params.Cart.GetByUserTgID)
 	}
 
 	cartGroup := out.Group("/cart")
 	{
 		cartGroup.POST("/", params.Cart.CreateCart)
 		cartGroup.DELETE("/", params.Cart.DeleteCart)
+		cartGroup.GET("/:id", params.Cart.GetByTgID)
 	}
 	menuGroup := out.Group("/menu")
 	{
