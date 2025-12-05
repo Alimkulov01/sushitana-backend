@@ -351,9 +351,13 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 	where := "WHERE TRUE"
 	args := []interface{}{limit, offset}
 	argID := 3
-
 	if req.Search != "" {
-		where += fmt.Sprintf(" AND name ILIKE $%d", argID)
+		where += fmt.Sprintf(`
+        AND (
+            name->>'en' ILIKE $%d OR
+            name->>'ru' ILIKE $%d OR
+            name->>'uz' ILIKE $%d
+        )`, argID, argID, argID)
 		args = append(args, "%"+req.Search+"%")
 		argID++
 	}

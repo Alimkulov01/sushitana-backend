@@ -14,8 +14,8 @@ type CreateCart struct {
 }
 
 type DeleteCart struct {
-	TGID      int64 `json:"tg_id"`
-	ProductID int64 `json:"product_id"`
+	TGID      int64  `json:"tg_id"`
+	ProductID string `json:"product_id"`
 }
 
 type PatchCart struct {

@@ -126,10 +126,12 @@ func (h *handler) GetListProduct(c *gin.Context) {
 
 		offset = c.Query("offset")
 		limit  = c.Query("limit")
+		search = c.Query("search")
 	)
 
 	filter.Limit = int64(utils.StrToInt(limit))
 	filter.Offset = int64(utils.StrToInt(offset))
+	filter.Search = search
 
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
