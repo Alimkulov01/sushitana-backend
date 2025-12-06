@@ -24,7 +24,7 @@ type (
 
 	Service interface {
 		Create(ctx context.Context, req structs.CreateOrder) error
-		GetByTgId(ctx context.Context, tgId int64) ([]structs.Order, error)
+		GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error)
 		GetByID(ctx context.Context, id string) (structs.Order, error)
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
 		Delete(ctx context.Context, order_id string) error
@@ -55,13 +55,13 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) error {
 	return err
 }
 
-func (s *service) GetByTgId(ctx context.Context, tgId int64) ([]structs.Order, error) {
-	orders, err := s.orderRepo.GetByTgId(ctx, tgId)
+func (s *service) GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error) {
+	resp, err := s.orderRepo.GetByTgId(ctx, tgId)
 	if err != nil {
 		s.logger.Error(ctx, "->orderRepo.GetByTgId", zap.Error(err))
-		return nil, err
+		return structs.GetListOrderByTgIDResponse{}, err
 	}
-	return orders, nil
+	return resp, nil
 }
 
 func (s *service) GetByID(ctx context.Context, id string) (structs.Order, error) {
@@ -91,7 +91,7 @@ func (s *service) Delete(ctx context.Context, order_id string) error {
 	return nil
 }
 
-func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) error{
+func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) error {
 	err := s.orderRepo.UpdateStatus(ctx, req)
 	if err != nil {
 		s.logger.Error(ctx, "->orderRepo.UpdateStatus", zap.Error(err))

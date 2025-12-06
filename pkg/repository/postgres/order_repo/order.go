@@ -2,6 +2,7 @@ package orderrepo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sushitana/internal/structs"
 	"sushitana/pkg/db"
@@ -25,7 +26,7 @@ type (
 
 	Repo interface {
 		Create(ctx context.Context, req structs.CreateOrder) error
-		GetByTgId(ctx context.Context, tgId int64) ([]structs.Order, error)
+		GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error)
 		GetByID(ctx context.Context, id string) (structs.Order, error)
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
 		Delete(ctx context.Context, order_id string) error
@@ -98,39 +99,55 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 	return nil
 }
 
-func (r repo) GetByTgId(ctx context.Context, tgId int64) ([]structs.Order, error) {
+func (r repo) getProductPrice(ctx context.Context, productID string) (int64, error) {
+	query := `
+        SELECT (size_prices->0->'price'->>'currentPrice')::bigint
+        FROM product
+        WHERE id = $1
+    `
+	var price int64
+	err := r.db.QueryRow(ctx, query, productID).Scan(&price)
+	if err != nil {
+		return 0, err
+	}
+	return price, nil
+}
+func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOrderByTgIDResponse, err error) {
 	r.logger.Info(ctx, "Get orders by tgId", zap.Any("tgId", tgId))
 
 	query := `
-		SELECT 
-			id,
-			tg_id,
-			delivery_type,
-			payment_method,
-			payment_status,
-			order_status,
-			address,
-			comment,
-			iiko_order_id,
-			iiko_delivery_id,
-			items,
-			created_at,
-			updated_at
-		FROM orders
-		WHERE tg_id = $1
-		ORDER BY created_at DESC
-	`
+        SELECT 
+            id,
+            tg_id,
+            delivery_type,
+            payment_method,
+            payment_status,
+            order_status,
+            address,
+            comment,
+            iiko_order_id,
+            iiko_delivery_id,
+            items,
+            delivery_price,
+            created_at,
+            updated_at
+        FROM orders
+        WHERE tg_id = $1
+        ORDER BY created_at DESC
+    `
 
 	rows, err := r.db.Query(ctx, query, tgId)
 	if err != nil {
-		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
-		return nil, fmt.Errorf("get orders failed: %w", err)
+		return resp, fmt.Errorf("get orders failed: %w", err)
 	}
 	defer rows.Close()
 
-	var orders []structs.Order
+	var totalItems int64
+
 	for rows.Next() {
 		var order structs.Order
+		var addrBytes, itemsBytes []byte
+
 		if err := rows.Scan(
 			&order.ID,
 			&order.TgID,
@@ -138,27 +155,40 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) ([]structs.Order, error
 			&order.PaymentMethod,
 			&order.PaymentStatus,
 			&order.Status,
-			&order.Address,
+			&addrBytes,
 			&order.Comment,
 			&order.IIKOOrderID,
 			&order.IIKODeliveryID,
-			&order.Products,
+			&itemsBytes,
+			&order.DeliveryPrice,
 			&order.CreatedAt,
 			&order.UpdateAt,
 		); err != nil {
-			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
-			return nil, fmt.Errorf("scan order failed: %w", err)
+			return resp, fmt.Errorf("scan order failed: %w", err)
 		}
-		orders = append(orders, order)
+
+		_ = json.Unmarshal(addrBytes, &order.Address)
+		_ = json.Unmarshal(itemsBytes, &order.Products)
+		var orderTotal int64 = 0
+
+		for _, p := range order.Products {
+
+			price, err := r.getProductPrice(ctx, p.ID)
+			if err != nil {
+				r.logger.Warn(ctx, "Price not found for product", zap.String("productId", p.ID))
+				continue
+			}
+
+			orderTotal += price * p.Quantity
+			totalItems += p.Quantity
+		}
+		order.TotalCount = totalItems
+		order.TotalPrice = orderTotal + order.DeliveryPrice
+
+		resp.Orders = append(resp.Orders, order)
 	}
 
-	if err := rows.Err(); err != nil {
-		r.logger.Error(ctx, "err on rows.Err", zap.Error(err))
-		return nil, fmt.Errorf("rows error: %w", err)
-	}
-
-	r.logger.Info(ctx, "orders retrieved", zap.Int("count", len(orders)))
-	return orders, nil
+	return resp, nil
 }
 
 func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {

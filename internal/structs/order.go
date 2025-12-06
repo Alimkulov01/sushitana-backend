@@ -3,7 +3,7 @@ package structs
 import "time"
 
 type Order struct {
-	ID            string         `json:"id"`
+	ID             string         `json:"id"`
 	TgID           int64          `json:"tgId"`
 	Address        Address        `json:"address"`
 	DeliveryType   string         `json:"deliveryType"`
@@ -15,8 +15,14 @@ type Order struct {
 	Comment        string         `json:"comment"`
 	IIKOOrderID    string         `json:"iikoOrderId"`
 	IIKODeliveryID string         `json:"iikDeliveryId"`
-	CreatedAt     time.Time      `json:"createdAt"`
-	UpdateAt      time.Time      `json:"updateAt"`
+	TotalCount     int64          `json:"totalCount"`
+	TotalPrice     int64          `json:"totalPrice"`
+	CreatedAt      time.Time      `json:"createdAt"`
+	UpdateAt       time.Time      `json:"updateAt"`
+}
+
+type GetListOrderByTgIDResponse struct {
+	Orders []Order `json:"orders"`
 }
 
 type Address struct {
