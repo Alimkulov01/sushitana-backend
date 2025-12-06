@@ -121,7 +121,7 @@ func NewRouter(params Params) {
 	}
 	userGroup := out.Group("/user")
 	{
-		userGroup.DELETE("/:id", params.Cart.ClearCart)
+		userGroup.DELETE("/cart/:id", params.Cart.ClearCart)
 		userGroup.PATCH("/", params.Cart.PatchCart)
 		userGroup.GET("/me/:id", params.Cart.GetByUserTgID)
 	}

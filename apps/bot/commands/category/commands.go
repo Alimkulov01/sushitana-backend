@@ -88,7 +88,6 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	msg.ReplyMarkup = keyboard
-	fmt.Println(text)
 	ctx.Bot().Send(msg)
 	_ = ctx.UpdateState("category_selected", map[string]string{"last_action": "show_category"})
 }

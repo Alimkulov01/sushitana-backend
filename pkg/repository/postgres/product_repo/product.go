@@ -263,19 +263,19 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 			id,
 			group_id,
 			name,
-			product_category_id,
+			COALESCE(product_category_id, '') AS product_category_id,
 			type,
 			order_item_type,
 			measure_unit,
 			size_prices,
 			COALESCE(do_not_print_in_cheque, false) AS do_not_print_in_cheque,
-			parent_group,
+			COALESCE(parent_group, '') AS parent_group,
 			"order",
-			payment_subject,
+			COALESCE(payment_subject, '') AS payment_subject,
 			code,
-			COALESCE(is_deleted, false) AS is_deleted 
+			COALESCE(is_deleted, false) AS is_deleted,
 			COALESCE(can_set_open_price, false) AS can_set_open_price,
-			COLAESCE(splittable, false) AS splittable,
+			splittable,
 			index,
 			COALESCE(is_new, false) AS is_new,
 			img_url,
@@ -581,21 +581,21 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 			p.order,
 			p.payment_subject,
 			p.code,
-			p.COALESCE(p.is_deleted, false) AS is_deleted 
-			p.COALESCE(p.can_set_open_price, false) AS can_set_open_price,
-			p.COLAESCE(p.splittable, false) AS splittable,
+			COALESCE(p.is_deleted, false) AS is_deleted ,
+			COALESCE(p.can_set_open_price, false) AS can_set_open_price,
+			COALESCE(p.splittable, false) AS splittable,
 			p.index,
-			p.COALESCE(p.is_new, false) AS is_new,
+			COALESCE(p.is_new, false) AS is_new,
 			p.img_url,
-			p.COALESCE(p.is_active, false) AS is_active, 
-			p.COALESCE(p.is_have_box, false) AS is_have_box,
+			COALESCE(p.is_active, false) AS is_active, 
+			COALESCE(p.is_have_box, false) AS is_have_box,
 			p.box_count,
 			p.box_price,
 			p.created_at,
 			p.updated_at,
 			p.weight
 		FROM product AS p
-		JOIN category AS c ON c.id = p.category_id
+		JOIN category AS c ON c.id = p.parent_group
 		WHERE c.name->>'uz' ILIKE $1 OR
 			  c.name->>'ru' ILIKE $1 OR
 			  c.name->>'en' ILIKE $1

@@ -25,6 +25,8 @@ const (
 	TypeLanguage          TextKey = "type_language"
 	Contact               TextKey = "contact"
 	BackButton            TextKey = "back_button"
+	AddToCart             TextKey = "add_to_cart"
+	SelectAmount          TextKey = "select_amount"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -154,6 +156,16 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "🔙 Ortga",
 		RU: "🔙 Назад",
 		EN: "🔙 Back",
+	},
+	AddToCart: {
+		UZ: "Qo'shish 🛒",
+		RU: "Добавить 🛒",
+		EN: "Add 🛒",
+	},
+	SelectAmount: {
+		UZ: "Iltimos, miqdorni tanlang:",
+		RU: "Пожалуйста, выберите количество:",
+		EN: "Please select the quantity:",
 	},
 }
 

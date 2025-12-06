@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sushitana/apps/bot/commands/category"
 	"sushitana/apps/bot/commands/clients"
 	"sushitana/apps/bot/commands/product"
@@ -64,11 +65,19 @@ func NewBot(p Params) error {
 	tgrouter.On(bot, tgrouter.State("waiting_change_language"), p.ClientsCmd.ChangeLanguage)
 	tgrouter.On(bot, tgrouter.State("waiting_for_name"), p.ClientsCmd.SaveName)
 	tgrouter.On(bot, tgrouter.State("waiting_for_phone"), p.ClientsCmd.ChangePhone)
-	//category
-	tgrouter.On(bot, tgrouter.State("product_selected"), p.CategoryCmd.MenuCategoryHandler)
 	// //product
 	tgrouter.On(bot, tgrouter.State("category_selected"), p.ProductCmd.CategoryByMenu)
-	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfo)
+	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfoHandler)
+
+	//callback
+	tgrouter.On(bot, tgrouter.Callback(""), func(ctx *tgrouter.Ctx) {
+		data := ctx.Update().CallbackQuery.Data
+
+		switch {
+		case strings.HasPrefix(data, "back_to_menu"):
+			p.ProductCmd.Callback(ctx)
+		}
+	})
 
 	go r.ListenUpdate(ctx)
 	p.Lifecycle.Append(fx.Hook{
