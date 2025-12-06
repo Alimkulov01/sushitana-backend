@@ -151,15 +151,22 @@ func (h *handler) GetListOrder(c *gin.Context) {
 		filter   structs.GetListOrderRequest
 		ctx      = c.Request.Context()
 
-		offset = c.Query("offset")
-		limit  = c.Query("limit")
-		search = c.Query("search")
+		offset        = c.Query("offset")
+		limit         = c.Query("limit")
+		status        = c.Query("status_order")
+		paymentStatus = c.Query("payment_status")
+		deliveryType  = c.Query("delivery_type")
+		paymentMethod = c.Query("payment_method")
+		createdAt     = c.Query("created_at")
 	)
 
 	filter.Limit = int64(utils.StrToInt(limit))
 	filter.Offset = int64(utils.StrToInt(offset))
-	filter.Status = search
-
+	filter.Status = status
+	filter.PaymentStatus = paymentStatus
+	filter.DeliveryType = deliveryType
+	filter.PaymentMethod = paymentMethod
+	filter.CreatedAt = createdAt
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
 	list, err := h.orderService.GetList(c, filter)

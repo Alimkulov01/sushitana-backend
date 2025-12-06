@@ -143,6 +143,7 @@ func NewRouter(params Params) {
 		orderGroup.POST("/", params.Order.CreateOrder)
 		orderGroup.GET("/user/:id", params.Order.GetByTgIdOrder)
 		orderGroup.GET("/:id", params.Order.GetByIDOrder)
+		orderGroup.GET("/", params.Order.GetListOrder)
 		api.PUT("/order/", params.Order.UpdateStatusOrder)
 		orderGroup.DELETE("/:id", params.Order.DeleteOrder)
 	}

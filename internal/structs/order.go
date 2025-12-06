@@ -52,9 +52,13 @@ type CreateOrder struct {
 }
 
 type GetListOrderRequest struct {
-	Limit  int64  `json:"limit"`
-	Offset int64  `json:"offset"`
-	Status string `json:"status"`
+	Limit         int64  `json:"limit"`
+	Offset        int64  `json:"offset"`
+	Status        string `json:"status"`
+	PaymentStatus string `json:"paymentStatus"`
+	DeliveryType  string `json:"deliveryType"`
+	PaymentMethod string `json:"paymentMethod"`
+	CreatedAt     string `json:"createdAt"`
 }
 
 type GetListOrderResponse struct {

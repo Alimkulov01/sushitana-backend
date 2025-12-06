@@ -240,9 +240,10 @@ func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {
 func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (resp structs.GetListOrderResponse, err error) {
 	r.logger.Info(ctx, "Get order list", zap.Any("req", req))
 
-	query := `
+	var (
+		query = `
 		SELECT
-			COUNT(*) OVER(), 
+			COUNT(*) OVER(),
 			id,
 			tg_id,
 			delivery_type,
@@ -257,21 +258,63 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			created_at,
 			updated_at
 		FROM orders
-		ORDER BY created_at DESC
-		LIMIT $1 OFFSET $2
 	`
+		where  = " WHERE TRUE"
+		offset = " OFFSET 0"
+		limit  = " LIMIT 10"
+		sort   = " ORDER BY created_at DESC"
+	)
 
-	rows, err := r.db.Query(ctx, query, req.Limit, req.Offset)
+	args := []interface{}{}
+	argIndex := 1
+
+	if req.Offset > 0 {
+		offset = fmt.Sprintf(" OFFSET %d", req.Offset)
+	}
+
+	if req.Limit > 0 {
+		limit = fmt.Sprintf(" LIMIT %d", req.Limit)
+	}
+
+	if len(req.Status) > 0 {
+		where += fmt.Sprintf(" AND order_status::text ILIKE $%d", argIndex)
+		args = append(args, "%"+req.Status+"%")
+		argIndex++
+	}
+	if len(req.DeliveryType) > 0 {
+		where += fmt.Sprintf(" AND delivery_type::text ILIKE $%d", argIndex)
+		args = append(args, "%"+req.DeliveryType+"%")
+		argIndex++
+	}
+	if len(req.PaymentMethod) > 0 {
+		where += fmt.Sprintf(" AND payment_method::text ILIKE $%d", argIndex)
+		args = append(args, "%"+req.PaymentMethod+"%")
+		argIndex++
+	}
+	if len(req.CreatedAt) > 0 {
+		where += fmt.Sprintf(" AND created_at::text ILIKE $%d", argIndex)
+		args = append(args, "%"+req.CreatedAt+"%")
+		argIndex++
+	}
+	if len(req.PaymentStatus) > 0 {
+		where += fmt.Sprintf(" AND payment_status::text ILIKE $%d", argIndex)
+		args = append(args, "%"+req.PaymentStatus+"%")
+		argIndex++
+	}
+
+	query += where + sort + limit + offset
+
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
 		return structs.GetListOrderResponse{}, fmt.Errorf("get order list failed: %w", err)
 	}
 	defer rows.Close()
 
-	var orders []structs.Order
 	for rows.Next() {
 		var order structs.Order
 		if err := rows.Scan(
+			&resp.Count,
 			&order.ID,
 			&order.TgID,
 			&order.DeliveryType,
@@ -289,7 +332,8 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
 			return structs.GetListOrderResponse{}, fmt.Errorf("scan order failed: %w", err)
 		}
-		orders = append(orders, order)
+
+		resp.Orders = append(resp.Orders, order)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -297,10 +341,8 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		return structs.GetListOrderResponse{}, fmt.Errorf("rows error: %w", err)
 	}
 
-	r.logger.Info(ctx, "order list retrieved", zap.Int("count", len(orders)))
-	return structs.GetListOrderResponse{
-		Orders: orders,
-	}, nil
+	r.logger.Info(ctx, "order list retrieved", zap.Int("count", len(resp.Orders)))
+	return resp, nil
 }
 
 func (r repo) Delete(ctx context.Context, order_id string) error {
