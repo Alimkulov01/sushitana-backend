@@ -27,6 +27,7 @@ const (
 	BackButton            TextKey = "back_button"
 	AddToCart             TextKey = "add_to_cart"
 	SelectAmount          TextKey = "select_amount"
+	CurrencySymbol        TextKey = "currency_symbol"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -166,6 +167,11 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "Iltimos, miqdorni tanlang:",
 		RU: "Пожалуйста, выберите количество:",
 		EN: "Please select the quantity:",
+	},
+	CurrencySymbol: {
+		UZ: "So'm",
+		RU: "Сум",
+		EN: "UZS",
 	},
 }
 

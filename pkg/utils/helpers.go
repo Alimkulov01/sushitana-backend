@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"math"
 	"strconv"
 	"strings"
+
+	"github.com/dustin/go-humanize"
 )
 
 func ReplaceQueryParams(namedQuery string, params map[string]interface{}) (string, []interface{}) {
@@ -21,4 +24,19 @@ func ReplaceQueryParams(namedQuery string, params map[string]interface{}) (strin
 	}
 
 	return namedQuery, args
+}
+
+func FCurrency(n float64) string {
+	if n == 0 {
+		return ""
+	}
+
+	rounded := math.Round(n*100) / 100
+	formatted := humanize.CommafWithDigits(rounded, 2)
+
+	if !strings.Contains(formatted, ".") {
+		formatted += " "
+	}
+
+	return formatted
 }

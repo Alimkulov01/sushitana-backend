@@ -66,7 +66,7 @@ func NewBot(p Params) error {
 	tgrouter.On(bot, tgrouter.State("waiting_for_name"), p.ClientsCmd.SaveName)
 	tgrouter.On(bot, tgrouter.State("waiting_for_phone"), p.ClientsCmd.ChangePhone)
 	// //product
-	tgrouter.On(bot, tgrouter.State("category_selected"), p.ProductCmd.CategoryByMenu)
+	tgrouter.On(bot, tgrouter.State("category_selected"), p.ProductCmd.CategoryByProductMenu)
 	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfoHandler)
 
 	//callback
