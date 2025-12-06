@@ -7,6 +7,7 @@ import (
 	"sushitana/pkg/db"
 	"sushitana/pkg/logger"
 
+	"github.com/google/uuid"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -24,6 +25,11 @@ type (
 
 	Repo interface {
 		Create(ctx context.Context, req structs.CreateOrder) error
+		GetByTgId(ctx context.Context, tgId int64) ([]structs.Order, error)
+		GetByID(ctx context.Context, id string) (structs.Order, error)
+		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
+		Delete(ctx context.Context, order_id string) error
+		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
 	}
 
 	repo struct {
@@ -42,41 +48,267 @@ func New(p Params) Repo {
 func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 	r.logger.Info(ctx, "Create order", zap.Any("req", req))
 
-	var status string
+	var (
+		status string
+		id     = uuid.NewString()
+	)
 	switch req.PaymentMethod {
-	case "cash":
-		status = "new"
-	case "click", "payme":
-		status = "pending_payment"
+	case "CASH":
+		status = "WAITING_OPERATOR"
+	case "CLICK", "PAYME":
+		status = "WAITING_PAYMENT"
 	default:
 		return fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
 	}
 
 	query := `
 		INSERT INTO orders (
+			id,
 			tg_id,
-			phone_number,
-			address,
-			total_price,
 			delivery_type,
 			payment_method,
-			products,
-			order_status
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			payment_status,
+			order_status,
+			address,
+			comment,
+			iiko_order_id,
+			iiko_delivery_id,
+			items
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 
 	if _, err := r.db.Exec(ctx, query,
-		req.TgId,
-		req.PhoneNumber,
-		req.Address,
+		id,
+		req.TgID,
+		req.DeliveryType,
 		req.PaymentMethod,
-		req.Products,
+		req.PaymentStatus,
 		status,
+		req.Address,
+		req.Comment,
+		req.IIKOOrderID,
+		req.IIKODeliveryID,
+		req.Products,
 	); err != nil {
 		r.logger.Error(ctx, "err on r.db.Exec", zap.Error(err))
 		return fmt.Errorf("create order failed: %w", err)
 	}
 
-	r.logger.Info(ctx, "order created", zap.Any("tg_id", req.TgId), zap.String("status", status))
+	r.logger.Info(ctx, "order created", zap.Any("tg_id", req.TgID), zap.String("status", status))
+	return nil
+}
+
+func (r repo) GetByTgId(ctx context.Context, tgId int64) ([]structs.Order, error) {
+	r.logger.Info(ctx, "Get orders by tgId", zap.Any("tgId", tgId))
+
+	query := `
+		SELECT 
+			id,
+			tg_id,
+			delivery_type,
+			payment_method,
+			payment_status,
+			order_status,
+			address,
+			comment,
+			iiko_order_id,
+			iiko_delivery_id,
+			items,
+			created_at,
+			updated_at
+		FROM orders
+		WHERE tg_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, tgId)
+	if err != nil {
+		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
+		return nil, fmt.Errorf("get orders failed: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []structs.Order
+	for rows.Next() {
+		var order structs.Order
+		if err := rows.Scan(
+			&order.ID,
+			&order.TgID,
+			&order.DeliveryType,
+			&order.PaymentMethod,
+			&order.PaymentStatus,
+			&order.Status,
+			&order.Address,
+			&order.Comment,
+			&order.IIKOOrderID,
+			&order.IIKODeliveryID,
+			&order.Products,
+			&order.CreatedAt,
+			&order.UpdateAt,
+		); err != nil {
+			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
+			return nil, fmt.Errorf("scan order failed: %w", err)
+		}
+		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Error(ctx, "err on rows.Err", zap.Error(err))
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	r.logger.Info(ctx, "orders retrieved", zap.Int("count", len(orders)))
+	return orders, nil
+}
+
+func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {
+	r.logger.Info(ctx, "Get order by ID", zap.String("id", id))
+
+	query := `
+		SELECT 
+			id,
+			tg_id,
+			delivery_type,
+			payment_method,
+			payment_status,
+			order_status,
+			address,
+			comment,
+			iiko_order_id,
+			iiko_delivery_id,
+			items,
+			created_at,
+			updated_at
+		FROM orders
+		WHERE id = $1
+	`
+
+	var order structs.Order
+	if err := r.db.QueryRow(ctx, query, id).Scan(
+		&order.ID,
+		&order.TgID,
+		&order.DeliveryType,
+		&order.PaymentMethod,
+		&order.PaymentStatus,
+		&order.Status,
+		&order.Address,
+		&order.Comment,
+		&order.IIKOOrderID,
+		&order.IIKODeliveryID,
+		&order.Products,
+		&order.CreatedAt,
+		&order.UpdateAt,
+	); err != nil {
+		r.logger.Error(ctx, "err on r.db.QueryRow.Scan", zap.Error(err))
+		return structs.Order{}, fmt.Errorf("get order by ID failed: %w", err)
+	}
+
+	r.logger.Info(ctx, "order retrieved", zap.String("id", id))
+	return order, nil
+}
+
+func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (resp structs.GetListOrderResponse, err error) {
+	r.logger.Info(ctx, "Get order list", zap.Any("req", req))
+
+	query := `
+		SELECT
+			COUNT(*) OVER(), 
+			id,
+			tg_id,
+			delivery_type,
+			payment_method,
+			payment_status,
+			order_status,
+			address,
+			comment,
+			iiko_order_id,
+			iiko_delivery_id,
+			items,
+			created_at,
+			updated_at
+		FROM orders
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := r.db.Query(ctx, query, req.Limit, req.Offset)
+	if err != nil {
+		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
+		return structs.GetListOrderResponse{}, fmt.Errorf("get order list failed: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []structs.Order
+	for rows.Next() {
+		var order structs.Order
+		if err := rows.Scan(
+			&order.ID,
+			&order.TgID,
+			&order.DeliveryType,
+			&order.PaymentMethod,
+			&order.PaymentStatus,
+			&order.Status,
+			&order.Address,
+			&order.Comment,
+			&order.IIKOOrderID,
+			&order.IIKODeliveryID,
+			&order.Products,
+			&order.CreatedAt,
+			&order.UpdateAt,
+		); err != nil {
+			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
+			return structs.GetListOrderResponse{}, fmt.Errorf("scan order failed: %w", err)
+		}
+		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Error(ctx, "err on rows.Err", zap.Error(err))
+		return structs.GetListOrderResponse{}, fmt.Errorf("rows error: %w", err)
+	}
+
+	r.logger.Info(ctx, "order list retrieved", zap.Int("count", len(orders)))
+	return structs.GetListOrderResponse{
+		Orders: orders,
+	}, nil
+}
+
+func (r repo) Delete(ctx context.Context, order_id string) error {
+	r.logger.Info(ctx, "Delete orders by order_id", zap.Any("order_id", order_id))
+
+	query := `
+		DELETE FROM orders
+		WHERE id = $1
+	`
+
+	if _, err := r.db.Exec(ctx, query, order_id); err != nil {
+		r.logger.Error(ctx, "err on r.db.Exec", zap.Error(err))
+		return fmt.Errorf("delete orders failed: %w", err)
+	}
+
+	r.logger.Info(ctx, "orders deleted", zap.Any("order_id", order_id))
+	return nil
+}
+
+func (r repo) UpdateStatus(ctx context.Context, req structs.UpdateStatus) error {
+	r.logger.Info(ctx, "Update order status", zap.String("orderId", req.OrderId), zap.String("status", req.Status))
+
+	query := `
+		UPDATE orders
+		SET order_status = $2
+		WHERE id = $1
+	`
+	rowsAffected, err := r.db.Exec(ctx, query, req.OrderId, req.Status)
+	if err != nil {
+		r.logger.Error(ctx, "err on r.db.Exec", zap.Error(err))
+		return fmt.Errorf("update order status failed: %w", err)
+	}
+
+	if rowsAffected.RowsAffected() == 0 {
+		r.logger.Warn(ctx, "no order found to update", zap.String("orderId", req.OrderId))
+		return fmt.Errorf("no order found with id: %s", req.OrderId)
+	}
+
+	r.logger.Info(ctx, "order status updated", zap.String("orderId", req.OrderId), zap.String("status", req.Status))
 	return nil
 }

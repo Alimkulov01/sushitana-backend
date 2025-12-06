@@ -3,56 +3,60 @@ package structs
 import "time"
 
 type Order struct {
-	ID                int64          `json:"id"`
-	TgId              int64          `json:"tg_id"`
-	PhoneNumber       string         `json:"phone_number"`
-	Address           Address        `json:"address"`
-	TolalPrice        float64        `json:"total_price"`
-	DeliveryType      string         `json:"delivery_type"`
-	PaymentMethod     string         `json:"payment_method"`
-	DeliveryPrice     int64          `json:"delivery_price"`
-	Products          []ProductOrder `json:"products"`
-	OrderStatus       string         `json:"order_status"`
-	LinkOrderInvoices string         `json:"link_order_invoices"`
-	CreatedAT         time.Time      `json:"created_at"`
-	UpdatedAT         time.Time      `json:"updated_at"`
+	ID            string         `json:"id"`
+	TgID           int64          `json:"tgId"`
+	Address        Address        `json:"address"`
+	DeliveryType   string         `json:"deliveryType"`
+	PaymentMethod  string         `json:"paymentMethod"`
+	PaymentStatus  string         `json:"paymentStatus"`
+	Products       []OrderProduct `json:"products"`
+	DeliveryPrice  int64          `json:"deliveryPrice"`
+	Status         string         `json:"status"`
+	Comment        string         `json:"comment"`
+	IIKOOrderID    string         `json:"iikoOrderId"`
+	IIKODeliveryID string         `json:"iikDeliveryId"`
+	CreatedAt     time.Time      `json:"createdAt"`
+	UpdateAt      time.Time      `json:"updateAt"`
 }
 
 type Address struct {
-	Langitude float64 `json:"longitude"`
-	Latitude  float64 `json:"latitude"`
-	Address   string  `json:"address"`
-	LinkMap   string  `json:"link_map"`
+	Lat        float64 `json:"lat"`
+	Lng        float64 `json:"lng"`
+	Name       string  `json:"name"`
+	DistanceKm float64 `json:"distanceKm"`
 }
 
-type ProductOrder struct {
-	Count     int64 `json:"count"`
-	ProductID int64 `json:"product_id"`
+type OrderProduct struct {
+	ID       string `json:"id"`
+	Quantity int64  `json:"quantity"`
 }
 
 type CreateOrder struct {
-	TgId          int64          `json:"tg_id"`
-	PhoneNumber   string         `json:"phone_number"`
-	Address       string         `json:"address"`
-	PaymentMethod string         `json:"payment_method"`
-	Products      []ProductOrder `json:"products"`
-	DeliveryType  string         `json:"delivery_type"`
-}
-
-type UpdateStatusOrder struct {
-	OrderID     int64  `json:"order_id"`
-	OrderStatus string `json:"order_status"`
+	TgID           int64          `json:"tgId"`
+	Address        Address        `json:"address"`
+	DeliveryType   string         `json:"deliveryType"`
+	PaymentMethod  string         `json:"paymentMethod"`
+	PaymentStatus  string         `json:"paymentStatus"`
+	Products       []OrderProduct `json:"products"`
+	DeliveryPrice  int64          `json:"deliveryPrice"`
+	Status         string         `json:"status"`
+	Comment        string         `json:"comment"`
+	IIKOOrderID    string         `json:"iikoOrderId"`
+	IIKODeliveryID string         `json:"iikDeliveryId"`
 }
 
 type GetListOrderRequest struct {
-	Limit         int64  `json:"limit"`
-	Offset        int64  `json:"offset"`
-	OrderStatus   string `json:"order_status"`
-	PhoneNumber   string `json:"phone_number"`
-	PaymentMethod string `json:"payment_method"`
+	Limit  int64  `json:"limit"`
+	Offset int64  `json:"offset"`
+	Status string `json:"status"`
 }
 
 type GetListOrderResponse struct {
-	Orders []Order `json:"orders"`
 	Count  int64   `json:"count"`
+	Orders []Order `json:"orders"`
+}
+
+type UpdateStatus struct {
+	OrderId string `json:"orderId"`
+	Status  string `json:"status"`
 }

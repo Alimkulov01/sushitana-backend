@@ -10,6 +10,7 @@ import (
 	"sushitana/apps/gateway/handlers/file"
 	"sushitana/apps/gateway/handlers/iiko"
 	"sushitana/apps/gateway/handlers/menu"
+	"sushitana/apps/gateway/handlers/order"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -47,6 +48,7 @@ type Params struct {
 	Cart      cart.Handler
 	Iiko      iiko.Handler
 	Menu      menu.Handler
+	Order     order.Handler
 }
 
 func NewRouter(params Params) {
@@ -135,6 +137,14 @@ func NewRouter(params Params) {
 	menuGroup := out.Group("/menu")
 	{
 		menuGroup.GET("/", params.Menu.GetMenu)
+	}
+	orderGroup := out.Group("/order")
+	{
+		orderGroup.POST("/", params.Order.CreateOrder)
+		orderGroup.GET("/user/:id", params.Order.GetByTgIdOrder)
+		orderGroup.GET("/:id", params.Order.GetByIDOrder)
+		api.PUT("/order/", params.Order.UpdateStatusOrder)
+		orderGroup.DELETE("/:id", params.Order.DeleteOrder)
 	}
 	server := http.Server{
 		Addr: params.Config.GetString("server.port"),

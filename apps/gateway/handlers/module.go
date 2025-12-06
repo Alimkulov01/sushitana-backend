@@ -10,6 +10,7 @@ import (
 	"sushitana/apps/gateway/handlers/iiko"
 	"sushitana/apps/gateway/handlers/menu"
 	"sushitana/apps/gateway/handlers/middleware"
+	"sushitana/apps/gateway/handlers/order"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -28,4 +29,5 @@ var Module = fx.Options(
 	cart.Module,
 	iiko.Module,
 	menu.Module,
+	order.Module,
 )

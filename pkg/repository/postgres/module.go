@@ -8,6 +8,7 @@ import (
 	filerepo "sushitana/pkg/repository/postgres/file_repo"
 	iikorepo "sushitana/pkg/repository/postgres/iiko_repo"
 	menurepo "sushitana/pkg/repository/postgres/menu_repo"
+	orderrepo "sushitana/pkg/repository/postgres/order_repo"
 	productRepo "sushitana/pkg/repository/postgres/product_repo"
 	rolerepo "sushitana/pkg/repository/postgres/role_repo"
 	userRepo "sushitana/pkg/repository/postgres/users_repo"
@@ -26,4 +27,5 @@ var Module = fx.Options(
 	cartrepo.Module,
 	menurepo.Module,
 	iikorepo.Module,
+	orderrepo.Module,
 )

@@ -11,25 +11,8 @@ ON CONFLICT DO NOTHING;
 
 ALTER TABLE category ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT FALSE;
 
-CREATE TYPE delivery_type AS ENUM ('pickup', 'courier');
-CREATE TYPE payment_method AS ENUM ('cash', 'payme', 'click');
-CREATE TYPE order_status AS ENUM ('new', 'pending_payment', 'failed_payment','in_progress', 'packaging', 'out_of_delivery', 'delivered', 'completed', 'cancelled');
 
-CREATE TABLE IF NOT EXISTS orders(
-    id SERIAL PRIMARY KEY,
-    tg_id INTEGER NOT NULL,
-    phone_number VARCHAR NOT NULL DEFAULT '',
-    address JSONB NOT NULL DEFAULT '{}',
-    total_price INTEGER NOT NULL DEFAULT 0,
-    delivery_type delivery_type NOT NULL,
-    payment_method payment_method NOT NULL ,
-    delivery_price INTEGER NOT NULL DEFAULT 0,
-    products JSONB NOT NULL DEFAULT '[]',
-    orders_status VARCHAR NOT NULL DEFAULT 'new',
-    link TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+
 ALTER TABLE clients
 ALTER COLUMN language DROP DEFAULT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS name VARCHAR DEFAULT '';
