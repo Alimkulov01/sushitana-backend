@@ -11,6 +11,7 @@ import (
 	"sushitana/apps/gateway/handlers/iiko"
 	"sushitana/apps/gateway/handlers/menu"
 	"sushitana/apps/gateway/handlers/order"
+	"sushitana/apps/gateway/handlers/payment/click"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -49,6 +50,7 @@ type Params struct {
 	Iiko      iiko.Handler
 	Menu      menu.Handler
 	Order     order.Handler
+	Click     click.Handler
 }
 
 func NewRouter(params Params) {
@@ -147,6 +149,8 @@ func NewRouter(params Params) {
 		api.PUT("/order/", params.Order.UpdateStatusOrder)
 		orderGroup.DELETE("/:id", params.Order.DeleteOrder)
 	}
+	out.POST("/click/invoice/create", params.Click.CreateClickInvoice)
+
 	server := http.Server{
 		Addr: params.Config.GetString("server.port"),
 		Handler: cors.New(cors.Options{

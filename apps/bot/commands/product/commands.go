@@ -371,6 +371,7 @@ func (c *Commands) Callback(ctx *tgrouter.Ctx) {
 	}
 
 	data := ctx.Update().CallbackQuery.Data
+	fmt.Println(data)
 
 	switch {
 	case strings.HasPrefix(data, "back_to_menu:"):

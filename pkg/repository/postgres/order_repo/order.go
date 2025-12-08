@@ -75,7 +75,7 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 			iiko_order_id,
 			iiko_delivery_id,
 			items
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		) VALUES ($1, $2::bigint, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 
 	if _, err := r.db.Exec(ctx, query,
