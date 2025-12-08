@@ -8,9 +8,10 @@ type CreateInvoiceRequest struct {
 }
 
 type CreateInvoiceResponse struct {
-	ErrorCode int    `json:"error_code,omitempty"`
-	ErrorNote string `json:"error_note,omitempty"`
-	InvoiceId int64  `json:"invoice_id,omitempty"`
+	ErrorCode  int64    `json:"error_code,omitempty"`
+	ErrorNote  string `json:"error_note,omitempty"`
+	InvoiceId  int64  `json:"invoice_id,omitempty"`
+	PaymentUrl string `json:"payment_url,omitempty"`
 }
 
 type ClickRequest struct {

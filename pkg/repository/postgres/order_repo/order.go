@@ -50,14 +50,17 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 	r.logger.Info(ctx, "Create order", zap.Any("req", req))
 
 	var (
-		status string
-		id     = uuid.NewString()
+		status        string
+		paymentStatus string
+		id            = uuid.NewString()
 	)
 	switch req.PaymentMethod {
 	case "CASH":
 		status = "WAITING_OPERATOR"
+		paymentStatus = "UNPAID"
 	case "CLICK", "PAYME":
 		status = "WAITING_PAYMENT"
+		paymentStatus = "PENDING"
 	default:
 		return fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
 	}
@@ -83,7 +86,7 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 		req.TgID,
 		req.DeliveryType,
 		req.PaymentMethod,
-		req.PaymentStatus,
+		paymentStatus,
 		status,
 		req.Address,
 		req.Comment,

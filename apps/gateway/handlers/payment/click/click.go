@@ -3,14 +3,11 @@ package click
 import (
 	"net/http"
 	"sushitana/internal/payment/click"
-	"sushitana/internal/responses"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
-	"sushitana/pkg/reply"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 var Module = fx.Provide(New)
@@ -40,25 +37,20 @@ func New(p Params) Handler {
 }
 
 func (h *handler) CreateClickInvoice(c *gin.Context) {
-	var (
-		response structs.Response
-		req      structs.CreateInvoiceRequest
-		ctx      = c.Request.Context()
-	)
-	defer reply.Json(c.Writer, http.StatusOK, &response)
+	var req structs.CreateInvoiceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
 
-	err := c.ShouldBindJSON(&req)
+	resp, err := h.clickService.CreateClickInvoice(c.Request.Context(), req)
 	if err != nil {
-		h.logger.Error(ctx, " err parse request", zap.Error(err))
-		response = responses.BadRequest
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := h.clickService.CreateClickInvoice(ctx, req)
-	if err != nil {
-		h.logger.Error(ctx, " err create click invoice", zap.Error(err))
-		response = responses.InternalErr
-		return
-	}
-	response = responses.Success
-	response.Payload = resp
+
+	c.JSON(http.StatusOK, gin.H{
+		"invoice_id":  resp.InvoiceId,
+		"payment_url": resp.PaymentUrl,
+	})
 }

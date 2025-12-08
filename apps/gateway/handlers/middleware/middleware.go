@@ -168,6 +168,8 @@ func getRequiredPermission(endpoint string, method string) string {
 		resource = "client"
 	} else if strings.Contains(endpoint, "/order") {
 		resource = "order"
+	} else if strings.Contains(endpoint, "/courier") {
+		resource = "courier"
 	} else {
 		return ""
 	}
