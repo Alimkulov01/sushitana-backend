@@ -17,6 +17,10 @@ type Order struct {
 	IIKODeliveryID string         `json:"iikDeliveryId"`
 	TotalCount     int64          `json:"totalCount"`
 	TotalPrice     int64          `json:"totalPrice"`
+	ProductName    Name           `json:"product_name"`
+	ProductUrl     string         `json:"product_url"`
+	ProductPrice   int64          `json:"product_price"`
+	OrderNumber    int64          `json:"order_number"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	UpdateAt       time.Time      `json:"updateAt"`
 }
@@ -56,6 +60,7 @@ type GetListOrderRequest struct {
 	PaymentStatus string `json:"paymentStatus"`
 	DeliveryType  string `json:"deliveryType"`
 	PaymentMethod string `json:"paymentMethod"`
+	OrderNumber   int64  `json:"order_number"`
 	CreatedAt     string `json:"createdAt"`
 }
 

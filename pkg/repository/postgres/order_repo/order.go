@@ -102,39 +102,46 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 	return nil
 }
 
-func (r repo) getProductPrice(ctx context.Context, productID string) (int64, error) {
+func (r repo) getProductPrice(ctx context.Context, productID string) (int64, structs.Name, string, error) {
 	query := `
-        SELECT (size_prices->0->'price'->>'currentPrice')::bigint
+        SELECT (size_prices->0->'price'->>'currentPrice')::bigint,
+			name,
+			img_url
         FROM product
         WHERE id = $1
     `
-	var price int64
-	err := r.db.QueryRow(ctx, query, productID).Scan(&price)
+	var (
+		price   int64
+		img_url string
+		name    structs.Name
+	)
+	err := r.db.QueryRow(ctx, query, productID).Scan(&price, &name, &img_url)
 	if err != nil {
-		return 0, err
+		return 0, structs.Name{}, "", err
 	}
-	return price, nil
+	return price, name, img_url, nil
 }
 func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOrderByTgIDResponse, err error) {
 	r.logger.Info(ctx, "Get orders by tgId", zap.Any("tgId", tgId))
 
 	query := `
         SELECT 
-            id,
-            tg_id,
-            delivery_type,
-            payment_method,
-            payment_status,
-            order_status,
-            address,
-            comment,
-            iiko_order_id,
-            iiko_delivery_id,
-            items,
-            delivery_price,
-            created_at,
-            updated_at
-        FROM orders
+            o.id,
+            o.tg_id,
+            o.delivery_type,
+            o.payment_method,
+            o.payment_status,
+            o.order_status,
+            o.address,
+            o.comment,
+            o.iiko_order_id,
+            o.iiko_delivery_id,
+            o.items,
+            o.delivery_price,
+			o.order_number,
+            o.created_at,
+            o.updated_at
+        FROM orders as o
         WHERE tg_id = $1
         ORDER BY created_at DESC
     `
@@ -164,6 +171,7 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 			&order.IIKODeliveryID,
 			&itemsBytes,
 			&order.DeliveryPrice,
+			&order.OrderNumber,
 			&order.CreatedAt,
 			&order.UpdateAt,
 		); err != nil {
@@ -176,7 +184,7 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 
 		for _, p := range order.Products {
 
-			price, err := r.getProductPrice(ctx, p.ID)
+			price, name, img_url, err := r.getProductPrice(ctx, p.ID)
 			if err != nil {
 				r.logger.Warn(ctx, "Price not found for product", zap.String("productId", p.ID))
 				continue
@@ -184,6 +192,9 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 
 			orderTotal += price * p.Quantity
 			totalItems += p.Quantity
+			order.ProductName = name
+			order.ProductPrice = price
+			order.ProductUrl = img_url
 		}
 		order.TotalCount = totalItems
 		totalItems = 0
@@ -211,6 +222,7 @@ func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {
 			iiko_order_id,
 			iiko_delivery_id,
 			items,
+			order_number,
 			created_at,
 			updated_at
 		FROM orders
@@ -230,6 +242,7 @@ func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {
 		&order.IIKOOrderID,
 		&order.IIKODeliveryID,
 		&order.Products,
+		&order.OrderNumber,
 		&order.CreatedAt,
 		&order.UpdateAt,
 	); err != nil {
@@ -259,6 +272,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			iiko_order_id,
 			iiko_delivery_id,
 			items,
+			order_number,
 			created_at,
 			updated_at
 		FROM orders
@@ -305,6 +319,11 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		args = append(args, "%"+req.PaymentStatus+"%")
 		argIndex++
 	}
+	if req.OrderNumber > 0 {
+		where += fmt.Sprintf(" AND order_number = $%d", argIndex)
+		args = append(args, req.OrderNumber)
+		argIndex++
+	}
 
 	query += where + sort + limit + offset
 
@@ -330,6 +349,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			&order.IIKOOrderID,
 			&order.IIKODeliveryID,
 			&order.Products,
+			&order.OrderNumber,
 			&order.CreatedAt,
 			&order.UpdateAt,
 		); err != nil {

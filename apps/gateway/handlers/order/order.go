@@ -158,6 +158,7 @@ func (h *handler) GetListOrder(c *gin.Context) {
 		deliveryType  = c.Query("delivery_type")
 		paymentMethod = c.Query("payment_method")
 		createdAt     = c.Query("created_at")
+		orderNumber   = c.Query("order_number")
 	)
 
 	filter.Limit = int64(utils.StrToInt(limit))
@@ -167,6 +168,7 @@ func (h *handler) GetListOrder(c *gin.Context) {
 	filter.DeliveryType = deliveryType
 	filter.PaymentMethod = paymentMethod
 	filter.CreatedAt = createdAt
+	filter.OrderNumber = cast.ToInt64(orderNumber)
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
 	list, err := h.orderService.GetList(c, filter)
