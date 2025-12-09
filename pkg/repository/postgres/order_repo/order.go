@@ -77,8 +77,9 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 			comment,
 			iiko_order_id,
 			iiko_delivery_id,
+			delivery_price,
 			items
-		) VALUES ($1, $2::bigint, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		) VALUES ($1, $2::bigint, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`
 
 	if _, err := r.db.Exec(ctx, query,
@@ -92,6 +93,7 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 		req.Comment,
 		req.IIKOOrderID,
 		req.IIKODeliveryID,
+		req.DeliveryPrice,
 		req.Products,
 	); err != nil {
 		r.logger.Error(ctx, "err on r.db.Exec", zap.Error(err))
@@ -126,22 +128,22 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 
 	query := `
         SELECT 
-            o.id,
-            o.tg_id,
-            o.delivery_type,
-            o.payment_method,
-            o.payment_status,
-            o.order_status,
-            o.address,
-            o.comment,
-            o.iiko_order_id,
-            o.iiko_delivery_id,
-            o.items,
-            o.delivery_price,
-			o.order_number,
-            o.created_at,
-            o.updated_at
-        FROM orders as o
+            id,
+            tg_id,
+            delivery_type,
+            payment_method,
+            payment_status,
+            order_status,
+            address,
+            comment,
+            iiko_order_id,
+            iiko_delivery_id,
+            items,
+			order_number,
+			delivery_price,
+            created_at,
+            updated_at
+        FROM orders
         WHERE tg_id = $1
         ORDER BY created_at DESC
     `
@@ -170,8 +172,8 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 			&order.IIKOOrderID,
 			&order.IIKODeliveryID,
 			&itemsBytes,
-			&order.DeliveryPrice,
 			&order.OrderNumber,
+			&order.DeliveryPrice,
 			&order.CreatedAt,
 			&order.UpdateAt,
 		); err != nil {
@@ -222,6 +224,7 @@ func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {
 			iiko_order_id,
 			iiko_delivery_id,
 			items,
+			delivery_price,
 			order_number,
 			created_at,
 			updated_at
@@ -242,6 +245,7 @@ func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {
 		&order.IIKOOrderID,
 		&order.IIKODeliveryID,
 		&order.Products,
+		&order.DeliveryPrice,
 		&order.OrderNumber,
 		&order.CreatedAt,
 		&order.UpdateAt,
@@ -249,6 +253,26 @@ func (r repo) GetByID(ctx context.Context, id string) (structs.Order, error) {
 		r.logger.Error(ctx, "err on r.db.QueryRow.Scan", zap.Error(err))
 		return structs.Order{}, fmt.Errorf("get order by ID failed: %w", err)
 	}
+	var (
+		totalItems int64
+		orderTotal int64 = 0
+	)
+	for _, p := range order.Products {
+
+		price, name, img_url, err := r.getProductPrice(ctx, p.ID)
+		if err != nil {
+			r.logger.Warn(ctx, "Price not found for product", zap.String("productId", p.ID))
+			continue
+		}
+
+		orderTotal += price * p.Quantity
+		totalItems += p.Quantity
+		order.ProductName = name
+		order.ProductPrice = price
+		order.ProductUrl = img_url
+	}
+	order.TotalCount = totalItems
+	order.TotalPrice = orderTotal + order.DeliveryPrice
 
 	r.logger.Info(ctx, "order retrieved", zap.String("id", id))
 	return order, nil
@@ -272,6 +296,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			iiko_order_id,
 			iiko_delivery_id,
 			items,
+			delivery_price,
 			order_number,
 			created_at,
 			updated_at
@@ -333,9 +358,13 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		return structs.GetListOrderResponse{}, fmt.Errorf("get order list failed: %w", err)
 	}
 	defer rows.Close()
+	var totalItems int64
 
 	for rows.Next() {
-		var order structs.Order
+		var (
+			order                 structs.Order
+			addrBytes, itemsBytes []byte
+		)
 		if err := rows.Scan(
 			&resp.Count,
 			&order.ID,
@@ -349,6 +378,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			&order.IIKOOrderID,
 			&order.IIKODeliveryID,
 			&order.Products,
+			&order.DeliveryPrice,
 			&order.OrderNumber,
 			&order.CreatedAt,
 			&order.UpdateAt,
@@ -356,6 +386,27 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
 			return structs.GetListOrderResponse{}, fmt.Errorf("scan order failed: %w", err)
 		}
+		_ = json.Unmarshal(addrBytes, &order.Address)
+		_ = json.Unmarshal(itemsBytes, &order.Products)
+		var orderTotal int64 = 0
+
+		for _, p := range order.Products {
+
+			price, name, img_url, err := r.getProductPrice(ctx, p.ID)
+			if err != nil {
+				r.logger.Warn(ctx, "Price not found for product", zap.String("productId", p.ID))
+				continue
+			}
+
+			orderTotal += price * p.Quantity
+			totalItems += p.Quantity
+			order.ProductName = name
+			order.ProductPrice = price
+			order.ProductUrl = img_url
+		}
+		order.TotalCount = totalItems
+		totalItems = 0
+		order.TotalPrice = orderTotal + order.DeliveryPrice
 
 		resp.Orders = append(resp.Orders, order)
 	}
