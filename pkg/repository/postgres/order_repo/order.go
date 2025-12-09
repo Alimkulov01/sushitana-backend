@@ -186,6 +186,7 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 			totalItems += p.Quantity
 		}
 		order.TotalCount = totalItems
+		totalItems = 0
 		order.TotalPrice = orderTotal + order.DeliveryPrice
 
 		resp.Orders = append(resp.Orders, order)
