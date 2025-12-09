@@ -100,26 +100,30 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
-
-	_ = ctx.UpdateState("show_main_menu", map[string]string{
-		"last_action": "changed_language",
-	})
-
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
 
+	_ = ctx.UpdateState("show_main_menu", map[string]string{
+		"last_action": "show_main_menu",
+	})
+
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Welcome))
 	msg.ReplyMarkup = keyboard
-	ctx.Bot().Send(msg)
+	_, _ = ctx.Bot().Send(msg)
 
-	menuUrl := fmt.Sprintf("https://your-api.example/pay/mock/checkout?token=%d", chatID)
+	menuUrl := "https://sushitana.uz/uz/bot/home"
+
+	btn := tgbotapi.NewInlineKeyboardButtonWebApp(
+		texts.Get(lang, texts.MenuButtonWebAppUrl),
+		tgbotapi.WebAppInfo{URL: menuUrl},
+	)
+
 	msgUrl := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.MenuButtonWebAppInfo))
 	msgUrl.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL(texts.Get(lang, texts.MenuButtonWebAppUrl), menuUrl),
-		),
+		tgbotapi.NewInlineKeyboardRow(btn),
 	)
-	ctx.Bot().Send(msgUrl)
+
+	_, _ = ctx.Bot().Send(msgUrl)
 }
 
 func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
@@ -371,7 +375,6 @@ func (c *Commands) Callback(ctx *tgrouter.Ctx) {
 	}
 
 	data := ctx.Update().CallbackQuery.Data
-	fmt.Println(data)
 
 	switch {
 	case strings.HasPrefix(data, "back_to_menu:"):

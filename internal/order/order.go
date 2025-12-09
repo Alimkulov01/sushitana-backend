@@ -25,7 +25,7 @@ type (
 	Service interface {
 		Create(ctx context.Context, req structs.CreateOrder) error
 		GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error)
-		GetByID(ctx context.Context, id string) (structs.Order, error)
+		GetByID(ctx context.Context, id string) (structs.GetListPrimaryKeyResponse, error)
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
@@ -64,11 +64,11 @@ func (s *service) GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrd
 	return resp, nil
 }
 
-func (s *service) GetByID(ctx context.Context, id string) (structs.Order, error) {
+func (s *service) GetByID(ctx context.Context, id string) (structs.GetListPrimaryKeyResponse, error) {
 	order, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil {
 		s.logger.Error(ctx, "->orderRepo.GetByID", zap.Error(err))
-		return structs.Order{}, err
+		return structs.GetListPrimaryKeyResponse{}, err
 	}
 	return order, nil
 }

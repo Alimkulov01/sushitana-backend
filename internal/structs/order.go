@@ -17,15 +17,18 @@ type Order struct {
 	IIKODeliveryID string         `json:"iikDeliveryId"`
 	TotalCount     int64          `json:"totalCount"`
 	TotalPrice     int64          `json:"totalPrice"`
-	ProductName    Name           `json:"product_name"`
-	ProductUrl     string         `json:"product_url"`
-	ProductPrice   int64          `json:"product_price"`
 	OrderNumber    int64          `json:"order_number"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	UpdateAt       time.Time      `json:"updateAt"`
 }
 
+type GetListPrimaryKeyResponse struct {
+	Phone string `json:"phone"`
+	Order Order  `json:"order"`
+}
+
 type GetListOrderByTgIDResponse struct {
+	Phone  string  `json:"phone"`
 	Orders []Order `json:"orders"`
 }
 
@@ -37,8 +40,11 @@ type Address struct {
 }
 
 type OrderProduct struct {
-	ID       string `json:"id"`
-	Quantity int64  `json:"quantity"`
+	ID           string `json:"id"`
+	Quantity     int64  `json:"quantity"`
+	ProductName  Name   `json:"product_name"`
+	ProductUrl   string `json:"product_url"`
+	ProductPrice int64  `json:"product_price"`
 }
 
 type CreateOrder struct {
@@ -65,8 +71,8 @@ type GetListOrderRequest struct {
 }
 
 type GetListOrderResponse struct {
-	Count  int64   `json:"count"`
-	Orders []Order `json:"orders"`
+	Count     int64                        `json:"count"`
+	OrderInfo []GetListOrderByTgIDResponse `json:"order_info"`
 }
 
 type UpdateStatus struct {
