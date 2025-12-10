@@ -50,15 +50,56 @@ func New(p Params) Repo {
 }
 
 func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
-	fmt.Println(req[1])
-	r.logger.Info(ctx, "Create product", zap.Any("req", len(req)))
+	r.logger.Info(ctx, "Create product", zap.Int("count", len(req)))
+
 	if len(req) == 0 {
 		return nil
 	}
+
 	batchSize := 1000
 	totalInserted := int64(0)
 
 	query := `
+		WITH data AS (
+			SELECT DISTINCT ON (id)
+				id,
+				group_id,
+				name,
+				product_category_id,
+				type,
+				order_item_type,
+				measure_unit,
+				size_prices,
+				do_not_print_in_cheque,
+				parent_group,
+				"order",
+				payment_subject,
+				code,
+				is_deleted,
+				can_set_open_price,
+				splittable,
+				weight
+			FROM jsonb_to_recordset($1::jsonb) AS t(
+				id text,
+				group_id text,
+				name jsonb,
+				product_category_id text,
+				type text,
+				order_item_type text,
+				measure_unit text,
+				size_prices jsonb,
+				do_not_print_in_cheque boolean,
+				parent_group text,
+				"order" int,
+				payment_subject text,
+				code text,
+				is_deleted boolean,
+				can_set_open_price boolean,
+				splittable boolean,
+				weight float
+			)
+			ORDER BY id
+		)
 		INSERT INTO product (
 			id,
 			group_id,
@@ -76,16 +117,17 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 			is_deleted,
 			can_set_open_price,
 			splittable,
-			weight)
+			weight
+		)
 		SELECT
 			id::text,
-			COALESCE(t.group_id, '') AS group_id,
+			COALESCE(group_id, '') AS group_id,
 			name::jsonb,
 			product_category_id::text,
 			type::text,
-			COALESCE(t.order_item_type, '') AS order_item_type,
-			COALESCE(t.measure_unit, '') AS measure_unit,
-			COALESCE(t.size_prices, '[]'::jsonb) AS size_prices,
+			COALESCE(order_item_type, '') AS order_item_type,
+			COALESCE(measure_unit, '') AS measure_unit,
+			COALESCE(size_prices, '[]'::jsonb) AS size_prices,
 			do_not_print_in_cheque::boolean,
 			parent_group::text,
 			"order"::int,
@@ -95,28 +137,17 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 			can_set_open_price::boolean,
 			splittable::boolean,
 			weight::float
-		FROM jsonb_to_recordset($1::jsonb) AS t(
-			id text,
-			group_id text,
-			name jsonb,
-			product_category_id text,
-			type text,
-			order_item_type text,
-			measure_unit text,
-			size_prices jsonb,
-			do_not_print_in_cheque boolean,
-			parent_group text,
-			"order" int,
-			payment_subject text,
-			code text,
-			is_deleted boolean,
-			can_set_open_price boolean,
-			splittable boolean,
-			weight float
-		) ON CONFLICT (id) DO UPDATE
+		FROM data
+		ON CONFLICT (id) DO UPDATE
 		SET
 			group_id = EXCLUDED.group_id,
-			name = product.name || (CASE WHEN (EXCLUDED.name ? 'ru') THEN jsonb_build_object('ru', EXCLUDED.name->>'ru') ELSE '{}'::jsonb END),
+			name = product.name || (
+				CASE
+					WHEN (EXCLUDED.name ? 'ru')
+						THEN jsonb_build_object('ru', EXCLUDED.name->>'ru')
+					ELSE '{}'::jsonb
+				END
+			),
 			product_category_id = EXCLUDED.product_category_id,
 			type = EXCLUDED.type,
 			order_item_type = EXCLUDED.order_item_type,
@@ -133,15 +164,24 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 			weight = EXCLUDED.weight,
 			updated_at = now()
 		WHERE
-			(CASE WHEN (EXCLUDED.name ? 'ru')
-			THEN (product.name->>'ru') IS DISTINCT FROM (EXCLUDED.name->>'ru')
-			ELSE false END)
-		OR product.group_id IS DISTINCT FROM EXCLUDED.group_id
-		OR COALESCE(product.do_not_print_in_cheque, false) IS DISTINCT FROM COALESCE(EXCLUDED.do_not_print_in_cheque, false)
-		OR COALESCE(product.is_deleted, false) IS DISTINCT FROM COALESCE(EXCLUDED.is_deleted, false)
-		OR COALESCE(product.can_set_open_price, false) IS DISTINCT FROM COALESCE(EXCLUDED.can_set_open_price, false)
-		OR COALESCE(product.splittable, false) IS DISTINCT FROM COALESCE(EXCLUDED.splittable, false)
+			(
+				CASE
+					WHEN (EXCLUDED.name ? 'ru')
+						THEN (product.name->>'ru') IS DISTINCT FROM (EXCLUDED.name->>'ru')
+					ELSE false
+				END
+			)
+			OR product.group_id IS DISTINCT FROM EXCLUDED.group_id
+			OR COALESCE(product.do_not_print_in_cheque, false)
+				IS DISTINCT FROM COALESCE(EXCLUDED.do_not_print_in_cheque, false)
+			OR COALESCE(product.is_deleted, false)
+				IS DISTINCT FROM COALESCE(EXCLUDED.is_deleted, false)
+			OR COALESCE(product.can_set_open_price, false)
+				IS DISTINCT FROM COALESCE(EXCLUDED.can_set_open_price, false)
+			OR COALESCE(product.splittable, false)
+				IS DISTINCT FROM COALESCE(EXCLUDED.splittable, false);
 	`
+
 	for start := 0; start < len(req); start += batchSize {
 		end := start + batchSize
 		if end > len(req) {
@@ -149,9 +189,14 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 		}
 
 		part := req[start:end]
+
 		b, err := json.Marshal(part)
 		if err != nil {
-			r.logger.Error(ctx, "failed to marshal products batch", zap.Error(err), zap.Int("start", start), zap.Int("end", end))
+			r.logger.Error(ctx, "failed to marshal products batch",
+				zap.Error(err),
+				zap.Int("start", start),
+				zap.Int("end", end),
+			)
 			return fmt.Errorf("marshal batch: %w", err)
 		}
 
@@ -161,7 +206,7 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 			return fmt.Errorf("begin tx: %w", err)
 		}
 
-		_, err = tx.Exec(ctx, query, string(b))
+		cmdTag, err := tx.Exec(ctx, query, string(b))
 		if err != nil {
 			_ = tx.Rollback(ctx)
 			r.logger.Error(ctx, "insert batch failed", zap.Error(err))
@@ -173,10 +218,12 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 			r.logger.Error(ctx, "tx commit failed", zap.Error(err))
 			return fmt.Errorf("tx commit: %w", err)
 		}
+
+		totalInserted += cmdTag.RowsAffected()
 	}
+
 	r.logger.Info(ctx, "CreateProducts finished", zap.Int64("inserted", totalInserted))
 	return nil
-
 }
 
 func (r *repo) GetByID(ctx context.Context, id string) (structs.Product, error) {

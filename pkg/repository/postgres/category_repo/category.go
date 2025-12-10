@@ -54,7 +54,7 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateCategory) error {
 	if len(req) == 0 {
 		return nil
 	}
-
+	fmt.Println(req)
 	batchSize := 1000
 	totalInserted := int64(0)
 
