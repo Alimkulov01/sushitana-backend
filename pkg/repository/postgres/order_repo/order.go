@@ -355,14 +355,10 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 	}
 	defer rows.Close()
 
-	// phone -> group
-	phoneGroups := make(map[string]*structs.GetListOrderByTgIDResponse)
-
 	for rows.Next() {
 		var (
 			order                 structs.Order
 			addrBytes, itemsBytes []byte
-			phone                 string
 			totalCount            int64
 		)
 
@@ -383,16 +379,14 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			&order.OrderNumber,
 			&order.CreatedAt,
 			&order.UpdateAt,
-			&phone,
+			&order.Phone,
 		); err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
 			return structs.GetListOrderResponse{}, fmt.Errorf("scan order failed: %w", err)
 		}
 
-		// COUNT(*) OVER() hamma qatorlar uchun bir xil bo‘ladi
 		resp.Count = totalCount
 
-		// JSON fieldlarni parse qilish
 		if err := json.Unmarshal(addrBytes, &order.Address); err != nil {
 			r.logger.Warn(ctx, "failed to unmarshal address", zap.Error(err))
 		}
@@ -400,7 +394,6 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			r.logger.Warn(ctx, "failed to unmarshal items", zap.Error(err))
 		}
 
-		// TotalPrice va TotalCount hisoblash
 		var orderTotal int64
 		var itemCount int64
 
@@ -417,16 +410,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		order.TotalCount = itemCount
 		order.TotalPrice = orderTotal + order.DeliveryPrice
 
-		// phone bo‘yicha guruhlash
-		group, ok := phoneGroups[phone]
-		if !ok {
-			group = &structs.GetListOrderByTgIDResponse{
-				Phone:  phone,
-				Orders: make([]structs.Order, 0),
-			}
-			phoneGroups[phone] = group
-		}
-		group.Orders = append(group.Orders, order)
+		resp.Orders = append(resp.Orders, order)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -434,14 +418,8 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		return structs.GetListOrderResponse{}, fmt.Errorf("rows error: %w", err)
 	}
 
-	// map -> slice
-	resp.OrderInfo = make([]structs.GetListOrderByTgIDResponse, 0, len(phoneGroups))
-	for _, group := range phoneGroups {
-		resp.OrderInfo = append(resp.OrderInfo, *group)
-	}
-
 	r.logger.Info(ctx, "order list retrieved",
-		zap.Int("phone_groups", len(resp.OrderInfo)),
+		zap.Int("phone_groups", len(resp.Orders)),
 		zap.Int64("total_orders", resp.Count),
 	)
 

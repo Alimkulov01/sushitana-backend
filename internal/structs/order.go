@@ -18,6 +18,7 @@ type Order struct {
 	TotalCount     int64          `json:"totalCount"`
 	TotalPrice     int64          `json:"totalPrice"`
 	OrderNumber    int64          `json:"order_number"`
+	Phone          string         `json:"phone,omitempty"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	UpdateAt       time.Time      `json:"updateAt"`
 }
@@ -71,8 +72,8 @@ type GetListOrderRequest struct {
 }
 
 type GetListOrderResponse struct {
-	Count     int64                        `json:"count"`
-	OrderInfo []GetListOrderByTgIDResponse `json:"order_info"`
+	Count  int64   `json:"count"`
+	Orders []Order `json:"orders"`
 }
 
 type UpdateStatus struct {
