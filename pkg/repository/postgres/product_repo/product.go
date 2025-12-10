@@ -149,20 +149,20 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 				END
 			),
 			product_category_id = EXCLUDED.product_category_id,
-			type = EXCLUDED.type,
-			order_item_type = EXCLUDED.order_item_type,
-			measure_unit = EXCLUDED.measure_unit,
-			size_prices = EXCLUDED.size_prices,
+			type                = EXCLUDED.type,
+			order_item_type     = EXCLUDED.order_item_type,
+			measure_unit        = EXCLUDED.measure_unit,
+			size_prices         = EXCLUDED.size_prices,
 			do_not_print_in_cheque = EXCLUDED.do_not_print_in_cheque,
-			parent_group = EXCLUDED.parent_group,
-			"order" = EXCLUDED."order",
-			payment_subject = EXCLUDED.payment_subject,
-			code = EXCLUDED.code,
-			is_deleted = EXCLUDED.is_deleted,
-			can_set_open_price = EXCLUDED.can_set_open_price,
-			splittable = EXCLUDED.splittable,
-			weight = EXCLUDED.weight,
-			updated_at = now()
+			parent_group        = EXCLUDED.parent_group,
+			"order"             = EXCLUDED."order",
+			payment_subject     = EXCLUDED.payment_subject,
+			code                = EXCLUDED.code,
+			is_deleted          = EXCLUDED.is_deleted,
+			can_set_open_price  = EXCLUDED.can_set_open_price,
+			splittable          = EXCLUDED.splittable,
+			weight              = EXCLUDED.weight,
+			updated_at          = now()
 		WHERE
 			(
 				CASE
@@ -171,7 +171,15 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 					ELSE false
 				END
 			)
-			OR product.group_id IS DISTINCT FROM EXCLUDED.group_id
+			OR COALESCE(product.group_id, '') IS DISTINCT FROM COALESCE(EXCLUDED.group_id, '')
+			OR COALESCE(product.product_category_id, '') IS DISTINCT FROM COALESCE(EXCLUDED.product_category_id, '')
+			OR COALESCE(product.type, '') IS DISTINCT FROM COALESCE(EXCLUDED.type, '')
+			OR COALESCE(product.order_item_type, '') IS DISTINCT FROM COALESCE(EXCLUDED.order_item_type, '')
+			OR COALESCE(product.measure_unit, '') IS DISTINCT FROM COALESCE(EXCLUDED.measure_unit, '')
+			OR COALESCE(product.parent_group, '') IS DISTINCT FROM COALESCE(EXCLUDED.parent_group, '')
+			OR COALESCE(product.payment_subject, '') IS DISTINCT FROM COALESCE(EXCLUDED.payment_subject, '')
+			OR COALESCE(product.code, '') IS DISTINCT FROM COALESCE(EXCLUDED.code, '')
+			OR product.size_prices IS DISTINCT FROM EXCLUDED.size_prices
 			OR COALESCE(product.do_not_print_in_cheque, false)
 				IS DISTINCT FROM COALESCE(EXCLUDED.do_not_print_in_cheque, false)
 			OR COALESCE(product.is_deleted, false)
@@ -179,7 +187,10 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateProduct) error {
 			OR COALESCE(product.can_set_open_price, false)
 				IS DISTINCT FROM COALESCE(EXCLUDED.can_set_open_price, false)
 			OR COALESCE(product.splittable, false)
-				IS DISTINCT FROM COALESCE(EXCLUDED.splittable, false);
+				IS DISTINCT FROM COALESCE(EXCLUDED.splittable, false)
+
+			-- weight (float)
+			OR product.weight IS DISTINCT FROM EXCLUDED.weight;
 	`
 
 	for start := 0; start < len(req); start += batchSize {
