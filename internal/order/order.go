@@ -3,10 +3,14 @@ package order
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"sushitana/internal/payment/click"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	orderrepo "sushitana/pkg/repository/postgres/order_repo"
 
+	"github.com/spf13/cast"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -19,11 +23,12 @@ type (
 	Params struct {
 		fx.In
 		OrderRepo orderrepo.Repo
+		ClickSvc  click.Service
 		Logger    logger.Logger
 	}
 
 	Service interface {
-		Create(ctx context.Context, req structs.CreateOrder) error
+		Create(ctx context.Context, req structs.CreateOrder) (string, error)
 		GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error)
 		GetByID(ctx context.Context, id string) (structs.GetListPrimaryKeyResponse, error)
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
@@ -33,6 +38,7 @@ type (
 	service struct {
 		orderRepo orderrepo.Repo
 		logger    logger.Logger
+		clickSvc  click.Service
 	}
 )
 
@@ -40,19 +46,64 @@ func New(p Params) Service {
 	return &service{
 		orderRepo: p.OrderRepo,
 		logger:    p.Logger,
+		clickSvc:  p.ClickSvc,
 	}
 }
-
-func (s *service) Create(ctx context.Context, req structs.CreateOrder) error {
-	err := s.orderRepo.Create(ctx, req)
+func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, error) {
+	id, err := s.orderRepo.Create(ctx, req)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
-			return err
+			return "", err
 		}
 		s.logger.Error(ctx, "->orderRepo.Create", zap.Error(err))
-		return err
+		return "", err
 	}
-	return err
+
+	order, err := s.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		s.logger.Error(ctx, "->orderRepo.GetByID after Create", zap.Error(err))
+		return "", err
+	}
+	serviceId := os.Getenv("CLICK_SERVICE_ID")
+	merchantId := os.Getenv("CLICK_MERCHANT_ID")
+
+	clickReq := structs.CheckoutPrepareRequest{
+		ServiceID:        serviceId,                              // moslashtiring
+		MerchatID:        merchantId,                             // moslashtiring
+		Amount:           cast.ToString(order.Order.TotalPrice),  // order da saqlangan summa
+		TransactionParam: cast.ToString(order.Order.OrderNumber), // order ID — callbackda shu bilan map qilamiz
+		ReturnUrl:        "",                                     // frontendga qaytarish URL
+		Description:      fmt.Sprintf("Sushitana buyurtma #%d", order.Order.OrderNumber),
+		TotalPrice:       order.Order.TotalPrice,
+	}
+
+	prepareResp, err := s.clickSvc.CheckoutPrepare(ctx, clickReq)
+	if err != nil {
+		s.logger.Error(ctx, "->clickSvc.CheckoutPrepare failed", zap.Error(err), zap.String("order_id", id))
+		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+			OrderId: order.Order.ID,
+			Status:  "UNPAID",
+		})
+		return "", fmt.Errorf("checkout prepare failed: %w", err)
+	}
+
+	reqID := prepareResp.RequestId
+	txParam := order.Order.OrderNumber
+	if err := s.orderRepo.UpdateClickInfo(ctx, id, reqID, cast.ToString(txParam)); err != nil {
+		s.logger.Error(ctx, "->orderRepo.UpdateClickInfo failed", zap.Error(err), zap.String("order_id", id))
+	}
+
+	var payURL string
+	if reqID != "" {
+		payURL = fmt.Sprintf("https://my.click.uz/services/pay/%s", reqID)
+	} else if cast.ToString(txParam) != "" {
+		payURL = fmt.Sprintf("https://my.click.uz/%s", cast.ToString(txParam))
+	} else {
+		s.logger.Error(ctx, "no pay url or identifiers in prepare response", zap.String("order_id", id), zap.Any("prepareResp", prepareResp))
+		return "", fmt.Errorf("no payment url returned from click prepare")
+	}
+
+	return payURL, nil
 }
 
 func (s *service) GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error) {

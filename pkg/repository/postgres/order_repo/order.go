@@ -25,12 +25,13 @@ type (
 	}
 
 	Repo interface {
-		Create(ctx context.Context, req structs.CreateOrder) error
+		Create(ctx context.Context, req structs.CreateOrder) (string, error)
 		GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error)
 		GetByID(ctx context.Context, id string) (structs.GetListPrimaryKeyResponse, error)
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
+		UpdateClickInfo(ctx context.Context, orderID, requestID, transactionParam string) error
 	}
 
 	repo struct {
@@ -46,14 +47,14 @@ func New(p Params) Repo {
 	}
 }
 
-func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
+func (r repo) Create(ctx context.Context, req structs.CreateOrder) (id string, err error) {
 	r.logger.Info(ctx, "Create order", zap.Any("req", req))
 
 	var (
 		status        string
 		paymentStatus string
-		id            = uuid.NewString()
 	)
+	id = uuid.NewString()
 	switch req.PaymentMethod {
 	case "CASH":
 		status = "WAITING_OPERATOR"
@@ -62,7 +63,7 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 		status = "WAITING_PAYMENT"
 		paymentStatus = "PENDING"
 	default:
-		return fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
+		return "", fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
 	}
 
 	query := `
@@ -97,11 +98,11 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) error {
 		req.Products,
 	); err != nil {
 		r.logger.Error(ctx, "err on r.db.Exec", zap.Error(err))
-		return fmt.Errorf("create order failed: %w", err)
+		return "", fmt.Errorf("create order failed: %w", err)
 	}
 
 	r.logger.Info(ctx, "order created", zap.Any("tg_id", req.TgID), zap.String("status", status))
-	return nil
+	return id, err
 }
 
 func (r repo) getProductPrice(ctx context.Context, productID string) (int64, error) {
@@ -331,8 +332,8 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		argIndex++
 	}
 	if len(req.CreatedAt) > 0 {
-		where += fmt.Sprintf(" AND o.created_at::text ILIKE $%d", argIndex)
-		args = append(args, "%"+req.CreatedAt+"%")
+		where += fmt.Sprintf(" AND o.created_at::date = $%d::date", argIndex)
+		args = append(args, req.CreatedAt)
 		argIndex++
 	}
 	if len(req.PaymentStatus) > 0 {
@@ -343,6 +344,11 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 	if req.OrderNumber > 0 {
 		where += fmt.Sprintf(" AND o.order_number = $%d", argIndex)
 		args = append(args, req.OrderNumber)
+		argIndex++
+	}
+	if len(req.PhoneNumber) > 0 {
+		where += fmt.Sprintf(" AND c.phone ILIKE $%d", argIndex)
+		args = append(args, "%"+req.PhoneNumber+"%")
 		argIndex++
 	}
 
@@ -464,4 +470,17 @@ func (r repo) UpdateStatus(ctx context.Context, req structs.UpdateStatus) error 
 
 	r.logger.Info(ctx, "order status updated", zap.String("orderId", req.OrderId), zap.String("status", req.Status))
 	return nil
+}
+
+func (r repo) UpdateClickInfo(ctx context.Context, orderID, requestID, transactionParam string) error {
+	query := `
+        UPDATE orders
+        SET 
+            click_request_id = $1,
+            click_transaction_param = $2,
+            click_prepare_at = NOW()
+        WHERE id = $3
+    `
+	_, err := r.db.Exec(ctx, query, requestID, transactionParam, orderID)
+	return err
 }

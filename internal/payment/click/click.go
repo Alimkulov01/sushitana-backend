@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
+	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
 	"sushitana/pkg/utils"
 
 	"go.uber.org/fx"
@@ -22,81 +21,50 @@ var (
 type (
 	Params struct {
 		fx.In
-		Logger logger.Logger
+		Logger    logger.Logger
+		ClickRepo clickrepo.Repo
 	}
 
 	Service interface {
-		// 1. Invoice yaratish (sen -> Click)
-		CreateClickInvoice(ctx context.Context, req structs.CreateInvoiceRequest) (structs.CreateInvoiceResponse, error)
+		CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepareRequest) (resp structs.CheckoutPrepareResponse, err error)
 	}
 
 	service struct {
-		logger logger.Logger
+		logger    logger.Logger
+		clickrepo clickrepo.Repo
 	}
 )
 
 func New(p Params) Service {
 	return &service{
-		logger: p.Logger,
+		logger:    p.Logger,
+		clickrepo: p.ClickRepo,
 	}
 }
 
-func (s service) CreateClickInvoice(ctx context.Context, req structs.CreateInvoiceRequest) (structs.CreateInvoiceResponse, error) {
-	url := "https://api.click.uz/v2/merchant/invoice/create"
-
+func (s *service) CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepareRequest) (resp structs.CheckoutPrepareResponse, err error) {
+	url := "https://api.click.uz/v2/internal/checkout/prepare"
 	jsonData := utils.Marshal(req)
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonData))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
 	if err != nil {
-		s.logger.Error(ctx, "Failed to create HTTP request", zap.Error(err))
-		return structs.CreateInvoiceResponse{}, err
+		s.logger.Error(ctx, "Failed to create HTTP request: %v", zap.Error(err))
+		return structs.CheckoutPrepareResponse{}, err
 	}
-
-	merchantUserID := os.Getenv("CLICK_MERCHANT_USER_ID")
-	merchantID := os.Getenv("CLICK_MERCHANT_ID")
-	secretKey := os.Getenv("CLICK_SECRET_KEY")
-	serviceID := os.Getenv("CLICK_SERVICE_ID")
-	paymentBaseURL := os.Getenv("CLICK_PAYMENT_BASE_URL")
-
-	authHeader, _ := utils.ClickAuthHeader(merchantUserID, secretKey)
-
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("Auth", authHeader)
-
 	client := &http.Client{}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
-		s.logger.Error(ctx, "HTTP request failed", zap.Error(err))
-		return structs.CreateInvoiceResponse{}, err
+		s.logger.Error(ctx, "HTTP request failed: %v", zap.Error(err))
+		return structs.CheckoutPrepareResponse{}, err
 	}
 	defer httpResp.Body.Close()
 
-	var result structs.CreateInvoiceResponse
+	var result structs.CheckoutPrepareResponse
 	if err := json.NewDecoder(httpResp.Body).Decode(&result); err != nil {
-		s.logger.Error(ctx, "Failed to decode response", zap.Error(err))
-		return structs.CreateInvoiceResponse{}, err
-	}
-
-	if result.ErrorCode != 0 {
-		s.logger.Error(ctx, "click invoice error",
-			zap.Int64("error_code", result.ErrorCode),
-			zap.String("error_note", result.ErrorNote),
-		)
-		return result, fmt.Errorf("click invoice error: %d - %s", result.ErrorCode, result.ErrorNote)
-	}
-
-	// Pay URL
-	if paymentBaseURL != "" && serviceID != "" && merchantID != "" && result.InvoiceId != 0 {
-		result.PaymentUrl = fmt.Sprintf(
-			"%s?service_id=%s&merchant_id=%s&amount=%f&transaction_param=%s",
-			paymentBaseURL,
-			serviceID,
-			merchantID,
-			req.Amount,                // TODO: CreateInvoiceRequest ichidan o‘qish
-			req.MerchantTransactionId, // order ID
-		)
+		s.logger.Error(ctx, "Failed to decode response: %v", zap.Error(err))
+		return structs.CheckoutPrepareResponse{}, err
 	}
 
 	return result, nil
+
 }

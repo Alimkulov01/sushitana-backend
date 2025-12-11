@@ -155,7 +155,6 @@ func NewRouter(params Params) {
 		courierGroup.GET("/", params.Order.GetListOrder)
 		courierGroup.PUT("/", params.Order.UpdateStatusOrder)
 	}
-	out.POST("/click/invoice/create", params.Click.CreateClickInvoice)
 
 	server := http.Server{
 		Addr: params.Config.GetString("server.port"),

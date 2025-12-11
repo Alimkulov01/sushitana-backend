@@ -68,6 +68,7 @@ type GetListOrderRequest struct {
 	DeliveryType  string `json:"deliveryType"`
 	PaymentMethod string `json:"paymentMethod"`
 	OrderNumber   int64  `json:"order_number"`
+	PhoneNumber   string `json:"phone_number"`
 	CreatedAt     string `json:"createdAt"`
 }
 

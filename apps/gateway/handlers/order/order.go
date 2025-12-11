@@ -64,7 +64,7 @@ func (h *handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	err = h.orderService.Create(c, request)
+	id, err := h.orderService.Create(c, request)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
 			response = responses.BadRequest
@@ -76,6 +76,8 @@ func (h *handler) CreateOrder(c *gin.Context) {
 	}
 
 	response = responses.Success
+	response.Payload = id
+
 }
 
 func (h *handler) GetByTgIdOrder(c *gin.Context) {
@@ -159,6 +161,7 @@ func (h *handler) GetListOrder(c *gin.Context) {
 		paymentMethod = c.Query("payment_method")
 		createdAt     = c.Query("created_at")
 		orderNumber   = c.Query("order_number")
+		phoneNumber   = c.Query("phone_number")
 	)
 
 	filter.Limit = int64(utils.StrToInt(limit))
@@ -169,6 +172,7 @@ func (h *handler) GetListOrder(c *gin.Context) {
 	filter.PaymentMethod = paymentMethod
 	filter.CreatedAt = createdAt
 	filter.OrderNumber = cast.ToInt64(orderNumber)
+	filter.PhoneNumber = phoneNumber
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
 	list, err := h.orderService.GetList(c, filter)

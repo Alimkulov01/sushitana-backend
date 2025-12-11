@@ -1,45 +1,80 @@
 package structs
 
-type CreateInvoiceRequest struct {
-	ServiceId             int     `json:"service_id"`
-	Amount                float64 `json:"amount"`
-	PhoneNumber           string  `json:"phone_number"`
-	MerchantTransactionId string  `json:"merchant_trans_id"`
+import (
+	"time"
+)
+
+type CheckoutPrepareRequest struct {
+	ServiceID        string `json:"service_id"`
+	MerchatID        string `json:"merchant_id"`
+	TransactionParam string `json:"transaction_param"`
+	Amount           string `json:"amount"`
+	ReturnUrl        string `json:"return_url"`
+	Source           string `json:"source"`
+	Description      string `json:"description"`
+	TotalPrice       int64  `json:"total_price"`
+}
+type Item struct {
+	Name  string `json:"name"`
+	Price int64  `json:"price"`
 }
 
-type CreateInvoiceResponse struct {
-	ErrorCode  int64    `json:"error_code,omitempty"`
-	ErrorNote  string `json:"error_note,omitempty"`
-	InvoiceId  int64  `json:"invoice_id,omitempty"`
-	PaymentUrl string `json:"payment_url,omitempty"`
+type CheckoutPrepareResponse struct {
+	ErrorCode int64  `json:"error_code"`
+	ErrorNote string `json:"error_note"`
+	RequestId string `json:"request_id"`
 }
 
-type ClickRequest struct {
-	ClickTransID      int64   `form:"click_trans_id" json:"click_trans_id"`           // ID tranzaksii v CLICK
-	ServiceID         int64   `form:"service_id" json:"service_id"`                   // ID servisa
-	ClickPaydocID     int64   `form:"click_paydoc_id" json:"click_paydoc_id"`         // ID plateja v CLICK
-	MerchantTransID   string  `form:"merchant_trans_id" json:"merchant_trans_id"`     // Order ID siz tomonda
-	MerchantPrepareID int64   `form:"merchant_prepare_id" json:"merchant_prepare_id"` // Faqat complete da keladi
-	Amount            float64 `form:"amount" json:"amount"`
-	Action            int     `form:"action" json:"action"` // 0 = prepare, 1 = complete
-	Error             int     `form:"error" json:"error"`
-	ErrorNote         string  `form:"error_note" json:"error_note"`
-	SignTime          string  `form:"sign_time" json:"sign_time"` // "YYYY-MM-DD HH:mm:ss"
-	SignString        string  `form:"sign_string" json:"sign_string"`
+type CheckoutInvoiceRequest struct {
+	RequestId   string `json:"request_id"`
+	PhoneNumber string `json:"phone_number"`
 }
 
-type ClickPrepareResponse struct {
-	ClickTransID      int64  `json:"click_trans_id"`
-	MerchantTransID   string `json:"merchant_trans_id"`
-	MerchantPrepareID int64  `json:"merchant_prepare_id"` // sizning payment ID
-	Error             int    `json:"error"`
-	ErrorNote         string `json:"error_note"`
+type CheckoutInvoiceResponse struct {
+	ErrorCode int64  `json:"error_code"`
+	ErrorNote string `json:"error_note"`
+	InvoiceId int64  `json:"invoice_id"`
 }
 
-type ClickCompleteResponse struct {
-	ClickTransID      int64  `json:"click_trans_id"`
-	MerchantTransID   string `json:"merchant_trans_id"`
-	MerchantConfirmID int64  `json:"merchant_confirm_id"` // sizning payment ID
-	Error             int    `json:"error"`
-	ErrorNote         string `json:"error_note"`
+type RetrieveResponse struct {
+	RequestId         string  `json:"request_id"`
+	ServiceId         int64   `json:"service_id"`
+	MerchantId        int64   `json:"merchant_id"`
+	ServiceName       string  `json:"service_name"`
+	TransactionParam  string  `json:"transaction_param"`
+	Amount            int64   `json:"amount"`
+	Language          string  `json:"language"`
+	ReturnUrl         string  `json:"return_url"`
+	CommissionPercent int64   `json:"commission_percent"`
+	Payment           Payment `json:"payment"`
+}
+
+type Payment struct {
+	PaymentStatusDescription string `json:"payment_status_description"`
+	PaymentId                string `json:"payment_id"`
+	PaymentStatus            int64  `json:"payment_status"`
+	IsInvoice                int64  `json:"is_invoice"`
+	PhoneNumber              string `json:"phone_number"`
+}
+
+// invoices jadvaliga mos struct
+type Invoice struct {
+	ID string `json:"id"` // UUID
+
+	ClickInvoiceID  int64  `json:"click_invoice_id"`  // Shop API da hozir 0 turadi
+	ClickTransID    int64  `json:"click_trans_id"`    // complete callback kelganda to'ldirasan
+	MerchantTransID string `json:"merchant_trans_id"` // order ID yoki transaction_param
+
+	OrderID string `json:"order_id"` // orders jadvalidagi id
+	TgID    int64  `json:"tg_id"`    // user tg_id bo'lsa
+
+	CustomerPhone string  `json:"customer_phone"`
+	Amount        float64 `json:"amount"`
+	Currency      string  `json:"currency"` // UZS
+
+	Status string `json:"status"` // CREATED, PENDING, PAID, FAILED
+
+	Comment   string    `json:"comment"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
