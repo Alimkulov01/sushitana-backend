@@ -44,6 +44,7 @@ type (
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
+		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
 	}
 	service struct {
 		orderRepo orderrepo.Repo
@@ -196,6 +197,14 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 	err := s.orderRepo.UpdateStatus(ctx, req)
 	if err != nil {
 		s.logger.Error(ctx, "->orderRepo.UpdateStatus", zap.Error(err))
+		return err
+	}
+	return nil
+}
+func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error {
+	err := s.orderRepo.UpdatePaymentStatus(ctx, req)
+	if err != nil {
+		s.logger.Error(ctx, "->orderRepo.UpdatePaymentStatus", zap.Error(err))
 		return err
 	}
 	return nil

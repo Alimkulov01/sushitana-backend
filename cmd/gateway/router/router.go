@@ -149,6 +149,7 @@ func NewRouter(params Params) {
 		orderGroup.GET("/:id", params.Order.GetByIDOrder)
 		orderGroup.GET("/", params.Order.GetListOrder)
 		orderGroup.PUT("/", params.Order.UpdateStatusOrder)
+		orderGroup.PUT("/payment", params.Order.UpdateStatusPayment)
 		orderGroup.DELETE("/:id", params.Order.DeleteOrder)
 	}
 	courierGroup := api.Group("/courier/order")

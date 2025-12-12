@@ -32,6 +32,7 @@ type (
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
+		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
 		UpdateClickInfo(ctx context.Context, orderID, requestID, transactionParam string) error
 	}
 
@@ -467,6 +468,29 @@ func (r repo) UpdateStatus(ctx context.Context, req structs.UpdateStatus) error 
 	query := `
 		UPDATE orders
 		SET order_status = $2
+		WHERE id = $1
+	`
+	rowsAffected, err := r.db.Exec(ctx, query, req.OrderId, req.Status)
+	if err != nil {
+		r.logger.Error(ctx, "err on r.db.Exec", zap.Error(err))
+		return fmt.Errorf("update order status failed: %w", err)
+	}
+
+	if rowsAffected.RowsAffected() == 0 {
+		r.logger.Warn(ctx, "no order found to update", zap.String("orderId", req.OrderId))
+		return fmt.Errorf("no order found with id: %s", req.OrderId)
+	}
+
+	r.logger.Info(ctx, "order status updated", zap.String("orderId", req.OrderId), zap.String("status", req.Status))
+	return nil
+}
+
+func (r repo) UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error {
+	r.logger.Info(ctx, "Update order status", zap.String("orderId", req.OrderId), zap.String("status", req.Status))
+
+	query := `
+		UPDATE orders
+		SET payment_status = $2
 		WHERE id = $1
 	`
 	rowsAffected, err := r.db.Exec(ctx, query, req.OrderId, req.Status)

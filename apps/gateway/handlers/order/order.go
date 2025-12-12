@@ -28,6 +28,7 @@ type (
 		GetListOrder(c *gin.Context)
 		DeleteOrder(c *gin.Context)
 		UpdateStatusOrder(c *gin.Context)
+		UpdateStatusPayment(c *gin.Context)
 	}
 	Params struct {
 		fx.In
@@ -212,7 +213,37 @@ func (h *handler) UpdateStatusOrder(c *gin.Context) {
 			response = responses.BadRequest
 			return
 		}
-		h.logger.Error(ctx, " err on h.orderService.Create", zap.Error(err))
+		h.logger.Error(ctx, " err on h.orderService.UpdateStatusOrder", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	response = responses.Success
+}
+
+func (h *handler) UpdateStatusPayment(c *gin.Context) {
+	var (
+		response structs.Response
+		request  structs.UpdateStatus
+		ctx      = c.Request.Context()
+	)
+
+	defer reply.Json(c.Writer, http.StatusOK, &response)
+
+	err := c.ShouldBindJSON(&request)
+	if err != nil {
+		h.logger.Warn(ctx, " error parse request", zap.Error(err))
+		response = responses.BadRequest
+		return
+	}
+
+	err = h.orderService.UpdatePaymentStatus(c, request)
+	if err != nil {
+		if errors.Is(err, structs.ErrUniqueViolation) {
+			response = responses.BadRequest
+			return
+		}
+		h.logger.Error(ctx, " err on h.orderService.UpdatePaymentStatus", zap.Error(err))
 		response = responses.InternalErr
 		return
 	}
