@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sushitana/internal/payment/click"
 	"sushitana/internal/payment/payme"
@@ -141,7 +142,8 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		if reqID == "" {
 			return "", fmt.Errorf("no request_id returned from click prepare")
 		}
-		payURL = fmt.Sprintf("https://my.click.uz/services/pay/%s", reqID)
+		orderID := cast.ToString(order.Order.OrderNumber)
+		payURL = BuildClickPayURL(serviceId, merchantId, 1000, orderID, os.Getenv("CLICK_RETURN_URL"))
 
 		// 3) order status
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
@@ -238,4 +240,16 @@ func ParseDeliveryMethod(v string) (DeliveryMethod, error) {
 	default:
 		return "", structs.ErrBadRequest
 	}
+}
+
+func BuildClickPayURL(serviceID, merchantID string, amountInt int64, orderID, returnURL string) string {
+	v := url.Values{}
+	v.Set("service_id", serviceID)
+	v.Set("merchant_id", merchantID)
+	v.Set("amount", fmt.Sprintf("%d.00", amountInt)) // N.NN format :contentReference[oaicite:3]{index=3}
+	v.Set("transaction_param", orderID)              // => merchant_trans_id :contentReference[oaicite:4]{index=4}
+	if returnURL != "" {
+		v.Set("return_url", returnURL)
+	}
+	return "https://my.click.uz/services/pay?" + v.Encode()
 }
