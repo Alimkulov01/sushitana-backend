@@ -108,6 +108,7 @@ func NewRouter(params Params) {
 		productGroup.DELETE("/:id", params.Product.DeleteProduct)
 	}
 	fileGroup := api.Group("/file")
+	
 	{
 		fileGroup.POST("/", params.File.CreateFile)
 		fileGroup.GET("/", params.File.GetListFile)
