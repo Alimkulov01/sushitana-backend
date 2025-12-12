@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+
 type CheckoutPrepareRequest struct {
 	ServiceID        string `json:"service_id"`
 	MerchatID        string `json:"merchant_id"`

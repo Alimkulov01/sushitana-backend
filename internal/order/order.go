@@ -77,7 +77,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	clickReq := structs.CheckoutPrepareRequest{
 		ServiceID:        serviceId,
 		MerchatID:        merchantId,
-		Amount:           cast.ToString(order.Order.TotalPrice),
+		Amount:           "1000",
 		TransactionParam: cast.ToString(order.Order.OrderNumber),
 		ReturnUrl:        "",
 		Description:      fmt.Sprintf("Sushitana buyurtma #%d", order.Order.OrderNumber),
