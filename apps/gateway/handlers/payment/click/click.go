@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -36,10 +37,9 @@ type (
 		OrderRepo orderrepo.Repo // UpdateStatus
 	}
 	handler struct {
-		logger         logger.Logger
-		clickRepo      clickrepo.Repo
-		orderRepo      orderrepo.Repo
-		merchantSecret string
+		logger    logger.Logger
+		clickRepo clickrepo.Repo
+		orderRepo orderrepo.Repo
 	}
 )
 
@@ -84,7 +84,7 @@ func (h *handler) Complete(c *gin.Context) {
 	}
 
 	// 3) Verify signature
-	if ok := verifySignature(payload, h.merchantSecret); !ok {
+	if ok := verifySignature(payload, os.Getenv("CLICK_MERCHANT_ID")); !ok {
 		h.logger.Error(ctx, "click complete: invalid signature", zap.Any("payload", payload))
 		c.String(http.StatusForbidden, "invalid signature")
 		return
