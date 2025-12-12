@@ -96,3 +96,16 @@ type RetrieveResponse struct {
 	ErrorCode int    `json:"error_code"`
 	ErrorNote string `json:"error_note"`
 }
+
+type CreateInvoiceRequest struct {
+	ServiceID       string  `json:"service_id"`
+	MerchantTransId string  `json:"merchant_trans_id"`
+	Amount          float64 `json:"amount"`
+	PhoneNumber     string  `json:"phone_number"`
+}
+
+type CreateInvoiceResponse struct {
+	InvoiceId int64  `json:"invoice_id"`
+	ErrorCode int    `json:"error_code"`
+	ErrorNote string `json:"error_note"`
+}

@@ -16,6 +16,7 @@ import (
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
+	"sushitana/pkg/utils"
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -36,6 +37,7 @@ type Service interface {
 	CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepareRequest) (structs.CheckoutPrepareResponse, error)
 	CheckoutInvoice(ctx context.Context, req structs.CheckoutInvoiceRequest) (structs.CheckoutInvoiceResponse, error)
 	Retrieve(ctx context.Context, requestId string) (structs.RetrieveResponse, error)
+	CreateClickInvoice(ctx context.Context, req structs.CreateInvoiceRequest) (structs.CreateInvoiceResponse, error)
 
 	ShopPrepare(ctx context.Context, req structs.ClickPrepareRequest) (structs.ClickPrepareResponse, error)
 	ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error)
@@ -250,6 +252,34 @@ func (s *service) CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepa
 	}
 
 	return resp, nil
+}
+
+func (s service) CreateClickInvoice(ctx context.Context, req structs.CreateInvoiceRequest) (structs.CreateInvoiceResponse, error) {
+	url := "https://api.click.uz/v2/merchant/invoice/create"
+
+	jsonData := utils.Marshal(req)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
+	if err != nil {
+		s.logger.Error(ctx, "Failed to create HTTP request: %v", zap.Error(err))
+		return structs.CreateInvoiceResponse{}, err
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		s.logger.Error(ctx, "HTTP request failed: %v", zap.Error(err))
+		return structs.CreateInvoiceResponse{}, err
+	}
+	defer httpResp.Body.Close()
+
+	var result structs.CreateInvoiceResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&result); err != nil {
+		s.logger.Error(ctx, "Failed to decode response: %v", zap.Error(err))
+		return structs.CreateInvoiceResponse{}, err
+	}
+
+	return result, nil
 }
 
 func (s *service) CheckoutInvoice(ctx context.Context, req structs.CheckoutInvoiceRequest) (structs.CheckoutInvoiceResponse, error) {

@@ -92,26 +92,11 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 		merchantTransID := order.Order.OrderNumber
 
-		clickReq := structs.CheckoutPrepareRequest{
-			ServiceID:        serviceId,
-			MerchantID:       merchantId,
-			TransactionParam: cast.ToString(merchantTransID), // MUHIM: callback bilan bir xil bo'lishi kerak
-			Amount:           1000.0,                         // real amount qo'ying
-			ReturnUrl:        os.Getenv("CLICK_RETURN_URL"),
-			Description:      fmt.Sprintf("Sushitana buyurtma #%d", order.Order.OrderNumber),
-			Items:            nil,
-		}
-
-		prepareResp, err := s.clickSvc.CheckoutPrepare(ctx, clickReq)
-		if err != nil {
-			s.logger.Error(ctx, "->clickSvc.CheckoutPrepare failed", zap.Error(err), zap.String("order_id", id))
-			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
-			return "", fmt.Errorf("checkout prepare failed: %w", err)
-		}
-
-		invoiceResp, err := s.clickSvc.CheckoutInvoice(ctx, structs.CheckoutInvoiceRequest{
-			RequestId:   prepareResp.RequestId,
-			PhoneNumber: order.Phone,
+		invoiceResp, err := s.clickSvc.CreateClickInvoice(ctx, structs.CreateInvoiceRequest{
+			ServiceID:       serviceId,
+			MerchantTransId: cast.ToString(merchantTransID),
+			Amount:          1000.0,
+			PhoneNumber:     order.Phone,
 		})
 		if err != nil {
 			s.logger.Error(ctx, "->clickSvc.CheckoutInvoice failed", zap.Error(err), zap.String("order_id", id))
@@ -129,7 +114,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			Amount:          cast.ToString(order.Order.TotalCount), // yoki string/decimal bo'lsa moslang
 			Currency:        "UZS",
 			Status:          "WAITING_PAYMENT",
-			Comment:         sql.NullString{String: prepareResp.RequestId, Valid: true}, // ixtiyoriy: request_id ni commentga saqlab qo'yish
+			Comment:         sql.NullString{String: cast.ToString(invoiceResp.InvoiceId), Valid: true}, // ixtiyoriy: request_id ni commentga saqlab qo'yish
 		}
 
 		if err := s.clickRepo.Create(ctx, inv); err != nil {
@@ -138,10 +123,10 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		}
 
 		// 2) pay URL
-		reqID := prepareResp.RequestId
-		if reqID == "" {
-			return "", fmt.Errorf("no request_id returned from click prepare")
-		}
+		// reqID := prepareResp.RequestId
+		// if reqID == "" {
+		// 	return "", fmt.Errorf("no request_id returned from click prepare")
+		// }
 		orderID := cast.ToString(order.Order.OrderNumber)
 		payURL = BuildClickPayURL(serviceId, merchantId, 1000, orderID, os.Getenv("CLICK_RETURN_URL"))
 
