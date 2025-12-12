@@ -19,7 +19,7 @@ type ClickPrepareRequest struct {
 }
 type ClickPrepareResponse struct {
 	ClickTransId      int64  `json:"click_trans_id"`
-	MerchantTransId   string `json:"merchant_trans_id"`
+	MerchantTransId   string `form:"merchant_trans_id" json:"merchant_trans_id" binding:"required"`
 	MerchantPrepareId int64  `json:"merchant_prepare_id"`
 	Error             int    `json:"error"`
 	ErrorNote         string `json:"error_note"`
