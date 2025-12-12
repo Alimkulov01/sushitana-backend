@@ -12,6 +12,7 @@ import (
 	"sushitana/apps/gateway/handlers/menu"
 	"sushitana/apps/gateway/handlers/order"
 	"sushitana/apps/gateway/handlers/payment/click"
+	"sushitana/apps/gateway/handlers/payment/payme"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -51,6 +52,7 @@ type Params struct {
 	Menu      menu.Handler
 	Order     order.Handler
 	Click     click.Handler
+	Payme     payme.Handler
 }
 
 func NewRouter(params Params) {
@@ -75,8 +77,13 @@ func NewRouter(params Params) {
 	api := r.Group(baseUrl)
 	api.Use(params.Ctx(), gin.Logger(), gin.Recovery())
 	api.Use(permissionMiddleware)
-	out.POST("/payments/click/complete", params.Click.Complete)
-	out.POST("/payments/click/prepare", params.Click.Prepare)
+
+	{
+		out.POST("/payments/click/complete", params.Click.Complete)
+		out.POST("/payments/click/prepare", params.Click.Prepare)
+
+		out.POST("/payments/payme", params.Payme.Handle)
+	}
 	clientGroup := api.Group("/client")
 	{
 		clientGroup.GET("/", params.Client.GetListClient)

@@ -11,6 +11,7 @@ import (
 	"sushitana/internal/menu"
 	"sushitana/internal/order"
 	"sushitana/internal/payment/click"
+	"sushitana/internal/payment/payme"
 	"sushitana/internal/product"
 	"sushitana/internal/role"
 
@@ -30,4 +31,5 @@ var Module = fx.Options(
 	menu.Module,
 	order.Module,
 	click.Module,
+	payme.Module,
 )

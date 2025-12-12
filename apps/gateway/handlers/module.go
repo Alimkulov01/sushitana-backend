@@ -12,6 +12,7 @@ import (
 	"sushitana/apps/gateway/handlers/middleware"
 	"sushitana/apps/gateway/handlers/order"
 	"sushitana/apps/gateway/handlers/payment/click"
+	"sushitana/apps/gateway/handlers/payment/payme"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -32,4 +33,5 @@ var Module = fx.Options(
 	menu.Module,
 	order.Module,
 	click.Module,
+	payme.Module,
 )

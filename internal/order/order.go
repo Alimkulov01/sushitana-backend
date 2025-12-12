@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sushitana/internal/payment/click"
+	"sushitana/internal/payment/payme"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	orderrepo "sushitana/pkg/repository/postgres/order_repo"
@@ -34,6 +35,7 @@ type (
 		OrderRepo orderrepo.Repo
 		ClickRepo clickrepo.Repo
 		ClickSvc  click.Service
+		PaymeSvc  payme.Service
 		Logger    logger.Logger
 	}
 
@@ -51,6 +53,7 @@ type (
 		clickRepo clickrepo.Repo
 		logger    logger.Logger
 		clickSvc  click.Service
+		paymeSvc  payme.Service
 	}
 )
 
@@ -60,6 +63,7 @@ func New(p Params) Service {
 		logger:    p.Logger,
 		clickSvc:  p.ClickSvc,
 		clickRepo: p.ClickRepo,
+		paymeSvc:  p.PaymeSvc,
 	}
 }
 func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, error) {
@@ -81,7 +85,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	var payURL string
 
 	switch req.PaymentMethod {
-	case "CLICK", "PAYME":
+	case "CLICK":
 		serviceId := os.Getenv("CLICK_SERVICE_ID")
 		merchantId := os.Getenv("CLICK_MERCHANT_ID")
 
@@ -145,13 +149,28 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			Status:  "WAITING_PAYMENT",
 		})
 
+	case "PAYME":
+		// 1) order status -> WAITING_PAYMENT
+		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+			OrderId: order.Order.ID,
+			Status:  "WAITING_PAYMENT",
+		})
+
+		// 2) payme checkout link yasab qaytarish
+		merchantID := os.Getenv("PAYME_KASSA_ID") // kassangiz (merchant) id
+		amountTiyin := int64(1000 * 100)          // som -> tiyin ---------------------------
+		payURL, err = s.paymeSvc.BuildPaymeCheckoutURL(merchantID, order.Order.ID, amountTiyin)
+		if err != nil {
+			s.logger.Error(ctx, "->paymeSvc.BuildPaymeCheckoutURL failed", zap.Error(err), zap.String("order_id", id))
+			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
+			return "", fmt.Errorf("build payme checkout url failed: %w", err)
+		}
+
 	default:
-		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 			OrderId: order.Order.ID,
 			Status:  "WAITING_OPERATOR",
-		}); err != nil {
-			s.logger.Error(ctx, "->orderRepo.UpdateStatus (CREATED) failed", zap.Error(err), zap.String("order_id", id))
-		}
+		})
 	}
 
 	return payURL, nil
