@@ -106,22 +106,24 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) (id string, e
 	return id, err
 }
 
-func (r repo) getProductPrice(ctx context.Context, productID string) (int64, structs.Name, error) {
+func (r repo) getProductPrice(ctx context.Context, productID string) (int64, structs.Name, string, error) {
 	query := `
         SELECT (size_prices->0->'price'->>'currentPrice')::bigint,
-			name
+			name,
+			img_url
         FROM product
         WHERE id = $1
     `
 	var (
 		price int64
 		name  structs.Name
+		url   string
 	)
-	err := r.db.QueryRow(ctx, query, productID).Scan(&price, &name)
+	err := r.db.QueryRow(ctx, query, productID).Scan(&price, &name, &url)
 	if err != nil {
-		return 0, structs.Name{}, err
+		return 0, structs.Name{}, "", err
 	}
-	return price, name, nil
+	return price, name, url, nil
 }
 func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOrderByTgIDResponse, err error) {
 	r.logger.Info(ctx, "Get orders by tgId", zap.Any("tgId", tgId))
@@ -188,7 +190,7 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 		var orderTotal int64 = 0
 		for i, p := range order.Products {
 
-			price, name, err := r.getProductPrice(ctx, p.ID)
+			price, name, url, err := r.getProductPrice(ctx, p.ID)
 			if err != nil {
 				r.logger.Warn(ctx, "Price not found for product", zap.String("productId", p.ID))
 				continue
@@ -197,6 +199,7 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 			totalItems += p.Quantity
 			order.Products[i].ProductName = name
 			order.Products[i].ProductPrice = price
+			order.Products[i].ProductUrl = url
 		}
 		order.TotalCount = totalItems
 		totalItems = 0
@@ -263,7 +266,7 @@ func (r repo) GetByID(ctx context.Context, id string) (resp structs.GetListPrima
 	)
 	for i, p := range order.Products {
 
-		price, name, err := r.getProductPrice(ctx, p.ID)
+		price, name, url, err := r.getProductPrice(ctx, p.ID)
 		if err != nil {
 			r.logger.Warn(ctx, "Price not found for product", zap.String("productId", p.ID))
 			continue
@@ -272,6 +275,8 @@ func (r repo) GetByID(ctx context.Context, id string) (resp structs.GetListPrima
 		orderTotal += price * p.Quantity
 		order.Products[i].ProductName = name
 		order.Products[i].ProductPrice = price
+		order.Products[i].ProductUrl = url
+
 	}
 	order.TotalCount = totalItems
 	order.TotalPrice = orderTotal + order.DeliveryPrice
@@ -411,7 +416,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		var itemCount int64
 
 		for _, p := range order.Products {
-			price, _, err := r.getProductPrice(ctx, p.ID)
+			price, _, _, err := r.getProductPrice(ctx, p.ID)
 			if err != nil {
 				r.logger.Warn(ctx, "Price not found for product", zap.String("productId", p.ID))
 				continue

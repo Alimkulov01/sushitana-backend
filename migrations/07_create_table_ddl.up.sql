@@ -10,7 +10,8 @@ CREATE TYPE order_status AS ENUM (
     'READY_FOR_PICKUP',
     'ON_THE_WAY',
     'DELIVERED',
-    'CANCELLED'
+    'CANCELLED',
+    'COMPLETED'
 );
 
 CREATE TABLE IF NOT EXISTS orders (
