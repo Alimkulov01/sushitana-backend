@@ -93,7 +93,7 @@ func (s *service) validateCompleteSign(req structs.ClickCompleteRequest, secret 
 }
 
 func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareRequest) (structs.ClickPrepareResponse, error) {
-	if req.Action != 0 {
+	if req.Action != nil {
 		return structs.ClickPrepareResponse{
 			ClickTransId:    req.ClickTransId,
 			MerchantTransId: req.MerchantTransId,

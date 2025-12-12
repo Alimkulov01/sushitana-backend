@@ -11,8 +11,8 @@ type ClickPrepareRequest struct {
 	ClickPaydocId   int64  `form:"click_paydoc_id" binding:"required"`
 	MerchantTransId string `form:"merchant_trans_id" binding:"required"`
 	Amount          string `form:"amount" binding:"required"`
-	Action          int    `form:"action" binding:"required"` // 0
-	Error           int    `form:"error" binding:"required"`
+	Action          *int   `form:"action" binding:"required,oneof=0 1"`
+	Error           *int   `form:"error" binding:"required"`
 	ErrorNote       string `form:"error_note"`
 	SignTime        string `form:"sign_time" binding:"required"`
 	SignString      string `form:"sign_string" binding:"required"`
