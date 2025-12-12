@@ -85,7 +85,8 @@ func (r repo) GetByTgID(ctx context.Context, tgid int64) (structs.Client, error)
                 language,
 				name,
                 created_at,
-                updated_at
+                updated_at,
+				is_active
             FROM clients
             WHERE tgid = $1
         `
@@ -99,6 +100,7 @@ func (r repo) GetByTgID(ctx context.Context, tgid int64) (structs.Client, error)
 		&resp.Name,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
+		&resp.IsActive,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -132,7 +134,8 @@ func (r repo) GetByID(ctx context.Context, id int64) (structs.Client, error) {
 				phone,
 				language,
 				created_at, 
-				updated_at
+				updated_at,
+				is_active
 			FROM clients
 			WHERE id = $1
 		`
@@ -144,6 +147,7 @@ func (r repo) GetByID(ctx context.Context, id int64) (structs.Client, error) {
 		&resp.Language,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
+		&resp.IsActive,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -163,14 +167,19 @@ func (r repo) GetList(ctx context.Context, req structs.GetListClientRequest) (re
 
 	query := `
 		SELECT
-			COUNT(*) OVER(), 
-			id,
-			tgid,
-			phone,
-			language,
-			created_at, 
-			updated_at
-		FROM clients
+			COUNT(*) OVER() AS total_count,
+			c.id,
+			c.tgid,
+			c.phone,
+			c.language,
+			c.created_at,
+			c.updated_at,
+			c.is_active,
+			c.name,
+			(SELECT COUNT(*) FROM orders o WHERE o.tg_id = c.tgid AND o.order_status = 'COMPLETED') AS completed_orders,
+			(SELECT COUNT(*) FROM orders o WHERE o.tg_id = c.tgid) AS total_orders,
+			(SELECT COUNT(*) FROM orders o WHERE o.tg_id = c.tgid AND o.order_status = 'CANCELLED') AS cancelled_orders
+		FROM clients c
 	` + filterSQL
 
 	rows, err := r.db.Query(ctx, query, args)
@@ -192,6 +201,11 @@ func (r repo) GetList(ctx context.Context, req structs.GetListClientRequest) (re
 			&client.Language,
 			&client.CreatedAt,
 			&client.UpdatedAt,
+			&client.IsActive,
+			&client.Name,
+			&client.CompletedOrderCount,
+			&client.OrderCount,
+			&client.CanceledOrderCount,
 		); err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
 			return structs.GetListClientResponse{}, fmt.Errorf("row scan failed: %w", err)
@@ -216,15 +230,16 @@ func filterClientQuery(req structs.GetListClientRequest) (string, pgx.NamedArgs)
 	var b strings.Builder
 	b.WriteString(" WHERE TRUE")
 
-	if !utils.StrEmpty(strings.TrimSpace(req.Search)) {
-		search := "%" + strings.TrimSpace(req.Search) + "%"
-		queryParams["search"] = search
+	if !utils.StrEmpty(strings.TrimSpace(req.PhoneNumber)) {
+		phone := "%" + strings.TrimSpace(req.PhoneNumber) + "%"
+		queryParams["phone_number"] = phone
+		b.WriteString(` AND c.phone ILIKE @phone_number `)
+	}
 
-		b.WriteString(`
-			AND (
-				phone ILIKE @search
-			)
-		`)
+	if !utils.StrEmpty(strings.TrimSpace(req.Name)) {
+		name := "%" + strings.TrimSpace(req.Name) + "%"
+		queryParams["name"] = name
+		b.WriteString(` AND c.name ILIKE @name `)
 	}
 
 	if req.Limit > 0 {
@@ -234,7 +249,7 @@ func filterClientQuery(req structs.GetListClientRequest) (string, pgx.NamedArgs)
 		queryParams["offset"] = req.Offset
 	}
 
-	b.WriteString(" ORDER BY created_at DESC")
+	b.WriteString(" ORDER BY c.created_at DESC")
 	b.WriteString(" LIMIT @limit OFFSET @offset")
 
 	return b.String(), queryParams

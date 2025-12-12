@@ -107,12 +107,14 @@ func (h *handler) GetListClient(c *gin.Context) {
 		filter   structs.GetListClientRequest
 		ctx      = c.Request.Context()
 
-		search = c.Query("search")
-		offset = c.Query("offset")
-		limit  = c.Query("limit")
+		phoneNumber = c.Query("phone_number")
+		name        = c.Query("name")
+		offset      = c.Query("offset")
+		limit       = c.Query("limit")
 	)
 
-	filter.Search = search
+	filter.PhoneNumber = phoneNumber
+	filter.Name = name
 	filter.Limit = int64(utils.StrToInt(limit))
 	filter.Offset = int64(utils.StrToInt(offset))
 

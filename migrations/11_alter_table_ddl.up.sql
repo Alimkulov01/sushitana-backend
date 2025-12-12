@@ -7,3 +7,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS invoices_merchant_prepare_id_uq
 
 CREATE UNIQUE INDEX IF NOT EXISTS invoices_merchant_trans_id_uq
   ON invoices(merchant_trans_id);
+
+ALTER TABLE clients
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
