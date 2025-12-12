@@ -84,7 +84,7 @@ func (h *handler) Complete(c *gin.Context) {
 	}
 
 	// 3) Verify signature
-	if ok := verifySignature(payload, os.Getenv("CLICK_MERCHANT_ID")); !ok {
+	if ok := verifySignature(payload, os.Getenv("CLICK_SECRET_KEY")); !ok {
 		h.logger.Error(ctx, "click complete: invalid signature", zap.Any("payload", payload))
 		c.String(http.StatusForbidden, "invalid signature")
 		return
