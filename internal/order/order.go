@@ -15,6 +15,13 @@ import (
 	"go.uber.org/zap"
 )
 
+type DeliveryMethod string
+
+const (
+	DeliveryMethodDelivery DeliveryMethod = "DELIVERY"
+	DeliveryMethodPickup   DeliveryMethod = "PICKUP"
+)
+
 var (
 	Module = fx.Provide(New)
 )
@@ -68,11 +75,11 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	merchantId := os.Getenv("CLICK_MERCHANT_ID")
 
 	clickReq := structs.CheckoutPrepareRequest{
-		ServiceID:        serviceId,                              // moslashtiring
-		MerchatID:        merchantId,                             // moslashtiring
-		Amount:           cast.ToString(order.Order.TotalPrice),  // order da saqlangan summa
-		TransactionParam: cast.ToString(order.Order.OrderNumber), // order ID — callbackda shu bilan map qilamiz
-		ReturnUrl:        "",                                     // frontendga qaytarish URL
+		ServiceID:        serviceId,
+		MerchatID:        merchantId,
+		Amount:           cast.ToString(order.Order.TotalPrice),
+		TransactionParam: cast.ToString(order.Order.OrderNumber),
+		ReturnUrl:        "",
 		Description:      fmt.Sprintf("Sushitana buyurtma #%d", order.Order.OrderNumber),
 		TotalPrice:       order.Order.TotalPrice,
 	}
@@ -149,4 +156,15 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 		return err
 	}
 	return nil
+}
+
+func ParseDeliveryMethod(v string) (DeliveryMethod, error) {
+	switch v {
+	case "delivery":
+		return DeliveryMethodDelivery, nil
+	case "pickup":
+		return DeliveryMethodPickup, nil
+	default:
+		return "", structs.ErrBadRequest
+	}
 }

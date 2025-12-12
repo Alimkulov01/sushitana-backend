@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sushitana/internal/structs"
 	"sushitana/pkg/db"
 	"sushitana/pkg/logger"
@@ -336,9 +337,9 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		args = append(args, req.CreatedAt)
 		argIndex++
 	}
-	if len(req.PaymentStatus) > 0 {
+	if len(strings.TrimSpace(req.PaymentStatus)) > 0 {
 		where += fmt.Sprintf(" AND o.payment_status::text ILIKE $%d", argIndex)
-		args = append(args, "%"+req.PaymentStatus+"%")
+		args = append(args, strings.TrimSpace(req.PaymentStatus))
 		argIndex++
 	}
 	if req.OrderNumber > 0 {
