@@ -1,6 +1,8 @@
 package click
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -49,6 +51,15 @@ func New(p Params) Handler {
 
 func (h *handler) Prepare(c *gin.Context) {
 	ctx := c.Request.Context()
+
+	b, _ := io.ReadAll(c.Request.Body)
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(b))
+
+	h.logger.Info(ctx, "click prepare incoming",
+		zap.String("content_type", c.GetHeader("Content-Type")),
+		zap.ByteString("raw_body", b),
+		zap.Any("query", c.Request.URL.Query()),
+	)
 
 	var req structs.ClickPrepareRequest
 	if err := c.ShouldBind(&req); err != nil {
