@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,7 +17,6 @@ import (
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
-	"sushitana/pkg/utils"
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -254,29 +254,45 @@ func (s *service) CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepa
 	return resp, nil
 }
 
-func (s service) CreateClickInvoice(ctx context.Context, req structs.CreateInvoiceRequest) (structs.CreateInvoiceResponse, error) {
+func (s *service) CreateClickInvoice(ctx context.Context, req structs.CreateInvoiceRequest) (structs.CreateInvoiceResponse, error) {
 	url := "https://api.click.uz/v2/merchant/invoice/create"
 
-	jsonData := utils.Marshal(req)
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
+	merchantUserID := os.Getenv("CLICK_MERCHANT_USER_ID") // docs: merchant_user_id kerak :contentReference[oaicite:5]{index=5}
+	secretKey := os.Getenv("CLICK_SECRET_KEY")
+
+	ts := time.Now().Unix()
+	sum := sha1.Sum([]byte(fmt.Sprintf("%d%s", ts, secretKey))) // sha1(timestamp + secret_key) :contentReference[oaicite:6]{index=6}
+	digest := hex.EncodeToString(sum[:])
+	auth := fmt.Sprintf("%s:%s:%d", merchantUserID, digest, ts)
+
+	body, err := json.Marshal(req)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to create HTTP request: %v", zap.Error(err))
 		return structs.CreateInvoiceResponse{}, err
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
-	httpResp, err := client.Do(httpReq)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		s.logger.Error(ctx, "HTTP request failed: %v", zap.Error(err))
+		return structs.CreateInvoiceResponse{}, err
+	}
+
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Auth", auth)
+
+	httpResp, err := s.client.Do(httpReq)
+	if err != nil {
 		return structs.CreateInvoiceResponse{}, err
 	}
 	defer httpResp.Body.Close()
 
 	var result structs.CreateInvoiceResponse
 	if err := json.NewDecoder(httpResp.Body).Decode(&result); err != nil {
-		s.logger.Error(ctx, "Failed to decode response: %v", zap.Error(err))
 		return structs.CreateInvoiceResponse{}, err
+	}
+
+	if httpResp.StatusCode != http.StatusOK || result.ErrorCode != 0 {
+		return result, fmt.Errorf("click invoice/create failed: status=%d err=%d note=%s",
+			httpResp.StatusCode, result.ErrorCode, result.ErrorNote)
 	}
 
 	return result, nil
