@@ -71,43 +71,75 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		s.logger.Error(ctx, "->orderRepo.GetByID after Create", zap.Error(err))
 		return "", err
 	}
-	serviceId := os.Getenv("CLICK_SERVICE_ID")
-	merchantId := os.Getenv("CLICK_MERCHANT_ID")
-
-	clickReq := structs.CheckoutPrepareRequest{
-		ServiceID:        serviceId,
-		MerchatID:        merchantId,
-		Amount:           "1000",
-		TransactionParam: cast.ToString(order.Order.OrderNumber),
-		ReturnUrl:        "",
-		Description:      fmt.Sprintf("Sushitana buyurtma #%d", order.Order.OrderNumber),
-		TotalPrice:       order.Order.TotalPrice,
-	}
-
-	prepareResp, err := s.clickSvc.CheckoutPrepare(ctx, clickReq)
-	if err != nil {
-		s.logger.Error(ctx, "->clickSvc.CheckoutPrepare failed", zap.Error(err), zap.String("order_id", id))
-		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-			OrderId: order.Order.ID,
-			Status:  "UNPAID",
-		})
-		return "", fmt.Errorf("checkout prepare failed: %w", err)
-	}
-
-	reqID := prepareResp.RequestId
-	txParam := order.Order.OrderNumber
-	if err := s.orderRepo.UpdateClickInfo(ctx, id, reqID, cast.ToString(txParam)); err != nil {
-		s.logger.Error(ctx, "->orderRepo.UpdateClickInfo failed", zap.Error(err), zap.String("order_id", id))
-	}
 
 	var payURL string
-	if reqID != "" {
-		payURL = fmt.Sprintf("https://my.click.uz/services/pay/%s", reqID)
-	} else if cast.ToString(txParam) != "" {
-		payURL = fmt.Sprintf("https://my.click.uz/%s", cast.ToString(txParam))
-	} else {
-		s.logger.Error(ctx, "no pay url or identifiers in prepare response", zap.String("order_id", id), zap.Any("prepareResp", prepareResp))
-		return "", fmt.Errorf("no payment url returned from click prepare")
+
+	switch req.PaymentMethod {
+	case "CLICK", "PAYME":
+		serviceId := os.Getenv("CLICK_SERVICE_ID")
+		merchantId := os.Getenv("CLICK_MERCHANT_ID")
+
+		clickReq := structs.CheckoutPrepareRequest{
+			ServiceID:        serviceId,
+			MerchantID:       merchantId,
+			TransactionParam: cast.ToString(order.Order.OrderNumber),
+			Amount:           1000,
+			ReturnUrl:        os.Getenv("CLICK_RETURN_URL"),
+			Description:      fmt.Sprintf("Sushitana buyurtma #%d", order.Order.OrderNumber),
+			Items:            nil,
+		}
+
+		prepareResp, err := s.clickSvc.CheckoutPrepare(ctx, clickReq)
+		if err != nil {
+			s.logger.Error(ctx, "->clickSvc.CheckoutPrepare failed", zap.Error(err), zap.String("order_id", id))
+			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+				OrderId: order.Order.ID,
+				Status:  "UNPAID",
+			})
+			return "", fmt.Errorf("checkout prepare failed: %w", err)
+		}
+		_, err = s.clickSvc.CheckoutInvoice(ctx, structs.CheckoutInvoiceRequest{
+			RequestId:   prepareResp.RequestId,
+			PhoneNumber: order.Phone,
+		})
+		if err != nil {
+			s.logger.Error(ctx, "->clickSvc.CheckoutInvoice failed", zap.Error(err), zap.String("order_id", id))
+			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+				OrderId: order.Order.ID,
+				Status:  "UNPAID",
+			})
+			return "", fmt.Errorf("checkout prepare failed: %w", err)
+		}
+
+		reqID := prepareResp.RequestId
+		txParam := cast.ToString(order.Order.OrderNumber)
+
+		if err := s.orderRepo.UpdateClickInfo(ctx, id, reqID, txParam); err != nil {
+			s.logger.Error(ctx, "->orderRepo.UpdateClickInfo failed", zap.Error(err), zap.String("order_id", id))
+		}
+		if reqID != "" {
+			payURL = fmt.Sprintf("https://my.click.uz/services/pay/%s", reqID)
+		} else if txParam != "" {
+			payURL = fmt.Sprintf("https://my.click.uz/%s", txParam)
+		} else {
+			s.logger.Error(ctx, "no pay url or identifiers in prepare response", zap.String("order_id", id), zap.Any("prepareResp", prepareResp))
+			return "", fmt.Errorf("no payment url returned from click prepare")
+		}
+
+		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+			OrderId: order.Order.ID,
+			Status:  "WAITING_PAYMENT",
+		}); err != nil {
+			s.logger.Error(ctx, "->orderRepo.UpdateStatus (UNPAID) failed", zap.Error(err), zap.String("order_id", id))
+		}
+
+	default:
+		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+			OrderId: order.Order.ID,
+			Status:  "WAITING_OPERATOR",
+		}); err != nil {
+			s.logger.Error(ctx, "->orderRepo.UpdateStatus (CREATED) failed", zap.Error(err), zap.String("order_id", id))
+		}
 	}
 
 	return payURL, nil

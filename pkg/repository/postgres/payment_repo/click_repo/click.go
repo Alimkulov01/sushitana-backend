@@ -2,6 +2,8 @@ package clickrepo
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"sushitana/internal/structs"
 	"sushitana/pkg/db"
 	"sushitana/pkg/logger"
@@ -27,6 +29,8 @@ type (
 		Create(ctx context.Context, req structs.Invoice) error
 		GetByMerchantTransID(ctx context.Context, merchantTransID string) (structs.Invoice, error)
 		UpdateStatus(ctx context.Context, id string, status string) error
+		GetByRequestId(ctx context.Context, requestId string) (structs.Invoice, error)
+		UpdateOnComplete(ctx context.Context, requestId string, clickTransID int64, status string) error
 	}
 
 	repo struct {
@@ -157,5 +161,83 @@ func (r repo) UpdateStatus(ctx context.Context, id string, status string) error 
 		return err
 	}
 
+	return nil
+}
+
+func (r repo) GetByRequestId(ctx context.Context, requestId string) (structs.Invoice, error) {
+	var resp structs.Invoice
+
+	query := `
+		SELECT
+			id,
+			click_invoice_id,
+			click_trans_id,
+			merchant_trans_id,
+			order_id,
+			tg_id,
+			customer_phone,
+			amount,
+			currency,
+			status,
+			comment,
+			created_at,
+			updated_at
+		FROM invoices
+		WHERE click_request_id = $1
+		LIMIT 1
+	`
+
+	err := r.db.QueryRow(ctx, query, requestId).Scan(
+		&resp.ID,
+		&resp.ClickInvoiceID,
+		&resp.ClickTransID,
+		&resp.MerchantTransID,
+		&resp.OrderID,
+		&resp.TgID,
+		&resp.CustomerPhone,
+		&resp.Amount,
+		&resp.Currency,
+		&resp.Status,
+		&resp.Comment,
+		&resp.CreatedAt,
+		&resp.UpdatedAt,
+	)
+
+	if err != nil {
+		r.logger.Warn(ctx, "invoice not found or failed fetching", zap.Error(err))
+		return structs.Invoice{}, err
+	}
+
+	return resp, nil
+}
+
+func (r repo) UpdateOnComplete(ctx context.Context, requestId string, clickTransID int64, status string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	query := `
+		UPDATE invoices
+		SET click_trans_id = $1, status = $2, updated_at = now()
+		WHERE request_id = $3
+		RETURNING id, order_id
+	`
+	var invoiceID string
+	var orderID sql.NullString
+	err = tx.QueryRow(ctx, query, clickTransID, status, requestId).Scan(&invoiceID, &orderID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return structs.ErrNotFound
+		}
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }

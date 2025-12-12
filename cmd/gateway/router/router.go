@@ -75,6 +75,8 @@ func NewRouter(params Params) {
 	api := r.Group(baseUrl)
 	api.Use(params.Ctx(), gin.Logger(), gin.Recovery())
 	api.Use(permissionMiddleware)
+	out.POST("/payments/click/complete", params.Click.Complete)
+	out.Any("/payments/click/prepare-check", params.Click.Prepare)
 	clientGroup := api.Group("/client")
 	{
 		clientGroup.GET("/", params.Client.GetListClient)
