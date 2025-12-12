@@ -2,6 +2,7 @@ package order
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	orderrepo "sushitana/pkg/repository/postgres/order_repo"
+	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
 
 	"github.com/spf13/cast"
 	"go.uber.org/fx"
@@ -30,6 +32,7 @@ type (
 	Params struct {
 		fx.In
 		OrderRepo orderrepo.Repo
+		ClickRepo clickrepo.Repo
 		ClickSvc  click.Service
 		Logger    logger.Logger
 	}
@@ -44,6 +47,7 @@ type (
 	}
 	service struct {
 		orderRepo orderrepo.Repo
+		clickRepo clickrepo.Repo
 		logger    logger.Logger
 		clickSvc  click.Service
 	}
@@ -54,6 +58,7 @@ func New(p Params) Service {
 		orderRepo: p.OrderRepo,
 		logger:    p.Logger,
 		clickSvc:  p.ClickSvc,
+		clickRepo: p.ClickRepo,
 	}
 }
 func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, error) {
@@ -79,11 +84,13 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		serviceId := os.Getenv("CLICK_SERVICE_ID")
 		merchantId := os.Getenv("CLICK_MERCHANT_ID")
 
+		merchantTransID := order.Order.OrderNumber
+
 		clickReq := structs.CheckoutPrepareRequest{
 			ServiceID:        serviceId,
 			MerchantID:       merchantId,
-			TransactionParam: cast.ToString(order.Order.OrderNumber),
-			Amount:           1000,
+			TransactionParam: cast.ToString(merchantTransID), // MUHIM: callback bilan bir xil bo'lishi kerak
+			Amount:           1000.0,                         // real amount qo'ying
 			ReturnUrl:        os.Getenv("CLICK_RETURN_URL"),
 			Description:      fmt.Sprintf("Sushitana buyurtma #%d", order.Order.OrderNumber),
 			Items:            nil,
@@ -92,46 +99,50 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		prepareResp, err := s.clickSvc.CheckoutPrepare(ctx, clickReq)
 		if err != nil {
 			s.logger.Error(ctx, "->clickSvc.CheckoutPrepare failed", zap.Error(err), zap.String("order_id", id))
-			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-				OrderId: order.Order.ID,
-				Status:  "UNPAID",
-			})
+			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
 			return "", fmt.Errorf("checkout prepare failed: %w", err)
 		}
-		_, err = s.clickSvc.CheckoutInvoice(ctx, structs.CheckoutInvoiceRequest{
+
+		invoiceResp, err := s.clickSvc.CheckoutInvoice(ctx, structs.CheckoutInvoiceRequest{
 			RequestId:   prepareResp.RequestId,
 			PhoneNumber: order.Phone,
 		})
 		if err != nil {
 			s.logger.Error(ctx, "->clickSvc.CheckoutInvoice failed", zap.Error(err), zap.String("order_id", id))
-			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-				OrderId: order.Order.ID,
-				Status:  "UNPAID",
-			})
-			return "", fmt.Errorf("checkout prepare failed: %w", err)
+			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
+			return "", fmt.Errorf("checkout invoice failed: %w", err)
 		}
 
+		// 1) invoices jadvaliga yozamiz (callback Prepare kelishidan oldin!)
+		inv := structs.Invoice{
+			ClickInvoiceID:  invoiceResp.InvoiceId, // sizning struct field nomingizga moslang
+			MerchantTransID: cast.ToString(merchantTransID),
+			OrderID:         sql.NullString{String: order.Order.ID, Valid: true},
+			TgID:            sql.NullInt64{Int64: order.Order.TgID, Valid: true},
+			CustomerPhone:   sql.NullString{String: order.Phone, Valid: true},
+			Amount:          cast.ToString(order.Order.TotalCount), // yoki string/decimal bo'lsa moslang
+			Currency:        "UZS",
+			Status:          "WAITING_PAYMENT",
+			Comment:         sql.NullString{String: prepareResp.RequestId, Valid: true}, // ixtiyoriy: request_id ni commentga saqlab qo'yish
+		}
+
+		if err := s.clickRepo.Create(ctx, inv); err != nil {
+			s.logger.Error(ctx, "->clickRepo.Create invoice failed", zap.Error(err), zap.String("order_id", id))
+			// xohlasangiz order status UNPAID qilib qo'ying va return qiling
+		}
+
+		// 2) pay URL
 		reqID := prepareResp.RequestId
-		txParam := cast.ToString(order.Order.OrderNumber)
-
-		if err := s.orderRepo.UpdateClickInfo(ctx, id, reqID, txParam); err != nil {
-			s.logger.Error(ctx, "->orderRepo.UpdateClickInfo failed", zap.Error(err), zap.String("order_id", id))
+		if reqID == "" {
+			return "", fmt.Errorf("no request_id returned from click prepare")
 		}
-		if reqID != "" {
-			payURL = fmt.Sprintf("https://my.click.uz/services/pay/%s", reqID)
-		} else if txParam != "" {
-			payURL = fmt.Sprintf("https://my.click.uz/%s", txParam)
-		} else {
-			s.logger.Error(ctx, "no pay url or identifiers in prepare response", zap.String("order_id", id), zap.Any("prepareResp", prepareResp))
-			return "", fmt.Errorf("no payment url returned from click prepare")
-		}
+		payURL = fmt.Sprintf("https://my.click.uz/services/pay/%s", reqID)
 
-		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+		// 3) order status
+		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 			OrderId: order.Order.ID,
 			Status:  "WAITING_PAYMENT",
-		}); err != nil {
-			s.logger.Error(ctx, "->orderRepo.UpdateStatus (UNPAID) failed", zap.Error(err), zap.String("order_id", id))
-		}
+		})
 
 	default:
 		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{

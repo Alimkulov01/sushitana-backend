@@ -3,16 +3,19 @@ package click
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
-	"sushitana/pkg/utils"
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -33,7 +36,9 @@ type Service interface {
 	CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepareRequest) (structs.CheckoutPrepareResponse, error)
 	CheckoutInvoice(ctx context.Context, req structs.CheckoutInvoiceRequest) (structs.CheckoutInvoiceResponse, error)
 	Retrieve(ctx context.Context, requestId string) (structs.RetrieveResponse, error)
-	HandleCompleteCallback(ctx context.Context, body io.Reader) error
+
+	ShopPrepare(ctx context.Context, req structs.ClickPrepareRequest) (structs.ClickPrepareResponse, error)
+	ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error)
 }
 
 type service struct {
@@ -51,12 +56,168 @@ func New(p Params) Service {
 		},
 	}
 }
+func md5hex(s string) string {
+	sum := md5.Sum([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+func normalizeAmount(s string) string {
+	return strings.TrimSpace(s)
+}
+
+func (s *service) validatePrepareSign(req structs.ClickPrepareRequest, secret string) bool {
+	raw := fmt.Sprintf("%d%d%s%s%s%d%s",
+		req.ClickTransId,
+		req.ServiceId,
+		secret,
+		req.MerchantTransId,
+		normalizeAmount(req.Amount),
+		req.Action,
+		req.SignTime,
+	)
+	return strings.EqualFold(md5hex(raw), req.SignString)
+}
+
+func (s *service) validateCompleteSign(req structs.ClickCompleteRequest, secret string) bool {
+	raw := fmt.Sprintf("%d%d%s%s%d%s%d%s",
+		req.ClickTransId,
+		req.ServiceId,
+		secret,
+		req.MerchantTransId,
+		req.MerchantPrepareId,
+		normalizeAmount(req.Amount),
+		req.Action,
+		req.SignTime,
+	)
+	return strings.EqualFold(md5hex(raw), req.SignString)
+}
+
+func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareRequest) (structs.ClickPrepareResponse, error) {
+	if req.Action != 0 {
+		return structs.ClickPrepareResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -3,
+			ErrorNote:       "Action not found",
+		}, nil
+	}
+
+	secret := os.Getenv("CLICK_SECRET_KEY")
+	if secret == "" {
+		s.logger.Error(ctx, "CLICK_SECRET_KEY is empty")
+		return structs.ClickPrepareResponse{Error: -8, ErrorNote: "Server config error"}, errors.New("CLICK_SECRET_KEY empty")
+	}
+
+	if !s.validatePrepareSign(req, secret) {
+		return structs.ClickPrepareResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -1,
+			ErrorNote:       "SIGN CHECK FAILED!",
+		}, nil
+	}
+
+	inv, err := s.clickrepo.GetByMerchantTransID(ctx, req.MerchantTransId)
+	if err != nil {
+		return structs.ClickPrepareResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -5,
+			ErrorNote:       "Invoice not found",
+		}, nil
+	}
+
+	if inv.Amount != req.Amount {
+		return structs.ClickPrepareResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -2,
+			ErrorNote:       "The total payment value is not equal.",
+		}, nil
+	}
+	mpid, err := s.clickrepo.UpsertPrepare(ctx, req.MerchantTransId, req.ClickTransId, req.ClickPaydocId, req.Amount)
+	if err != nil {
+		s.logger.Error(ctx, "UpsertPrepare failed", zap.Error(err))
+		return structs.ClickPrepareResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -7,
+			ErrorNote:       "Failed to update invoice",
+		}, nil
+	}
+
+	return structs.ClickPrepareResponse{
+		ClickTransId:      req.ClickTransId,
+		MerchantTransId:   req.MerchantTransId,
+		MerchantPrepareId: mpid,
+		Error:             0,
+		ErrorNote:         "Success",
+	}, nil
+}
+
+func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error) {
+	if req.Action != 1 {
+		return structs.ClickCompleteResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -3,
+			ErrorNote:       "Action not found",
+		}, nil
+	}
+
+	secret := os.Getenv("CLICK_SECRET_KEY")
+	if secret == "" {
+		s.logger.Error(ctx, "CLICK_SECRET_KEY is empty")
+		return structs.ClickCompleteResponse{Error: -8, ErrorNote: "Server config error"}, errors.New("CLICK_SECRET_KEY empty")
+	}
+
+	if !s.validateCompleteSign(req, secret) {
+		return structs.ClickCompleteResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -1,
+			ErrorNote:       "SIGN CHECK FAILED!",
+		}, nil
+	}
+
+	status := "PAID"
+	if req.Error != 0 {
+		status = "FAILED"
+	}
+
+	invoiceID, orderID, err := s.clickrepo.UpdateOnComplete(ctx, req.MerchantTransId, req.MerchantPrepareId, req.ClickTransId, status)
+	if err != nil {
+		s.logger.Error(ctx, "UpdateOnComplete failed", zap.Error(err))
+		return structs.ClickCompleteResponse{
+			ClickTransId:    req.ClickTransId,
+			MerchantTransId: req.MerchantTransId,
+			Error:           -7,
+			ErrorNote:       "Failed to update invoice",
+		}, nil
+	}
+
+	_ = orderID
+	_ = invoiceID
+
+	return structs.ClickCompleteResponse{
+		ClickTransId:      req.ClickTransId,
+		MerchantTransId:   req.MerchantTransId,
+		MerchantConfirmId: req.MerchantPrepareId,
+		Error:             0,
+		ErrorNote:         "Success",
+	}, nil
+}
 
 func (s *service) CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepareRequest) (structs.CheckoutPrepareResponse, error) {
 	url := "https://api.click.uz/v2/internal/checkout/prepare"
-	jsonData := utils.Marshal(req)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonData))
+	body, err := json.Marshal(req)
+	if err != nil {
+		s.logger.Error(ctx, "Click CheckoutPrepare: marshal failed", zap.Error(err))
+		return structs.CheckoutPrepareResponse{}, err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		s.logger.Error(ctx, "Click CheckoutPrepare: failed to create request", zap.Error(err))
 		return structs.CheckoutPrepareResponse{}, err
@@ -70,135 +231,113 @@ func (s *service) CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepa
 	}
 	defer httpResp.Body.Close()
 
-	var result structs.CheckoutPrepareResponse
-	if err := json.NewDecoder(httpResp.Body).Decode(&result); err != nil {
-		s.logger.Error(ctx, "Click CheckoutPrepare: failed to decode response", zap.Error(err))
+	var resp structs.CheckoutPrepareResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		s.logger.Error(ctx, "Click CheckoutPrepare: decode failed", zap.Error(err))
 		return structs.CheckoutPrepareResponse{}, err
 	}
 
 	if httpResp.StatusCode != http.StatusOK {
-		s.logger.Warn(ctx, "Click CheckoutPrepare: non-200 status", zap.Int("status", httpResp.StatusCode), zap.Any("resp", result))
-		return result, errors.New(result.ErrorNote)
+		s.logger.Warn(ctx, "Click CheckoutPrepare: non-200 status", zap.Int("status", httpResp.StatusCode), zap.Any("resp", resp))
+		if resp.ErrorNote != "" {
+			return resp, errors.New(resp.ErrorNote)
+		}
+		return resp, fmt.Errorf("click prepare non-200: %d", httpResp.StatusCode)
 	}
 
-	return result, nil
+	if resp.ErrorCode != 0 {
+		return resp, errors.New(resp.ErrorNote)
+	}
+
+	return resp, nil
 }
 
 func (s *service) CheckoutInvoice(ctx context.Context, req structs.CheckoutInvoiceRequest) (structs.CheckoutInvoiceResponse, error) {
 	url := "https://api.click.uz/v2/internal/checkout/invoice"
 
-	jsonData, err := json.Marshal(req)
+	body, err := json.Marshal(req)
 	if err != nil {
-		s.logger.Error(ctx, "CheckoutInvoice: marshal failed", zap.Error(err))
+		s.logger.Error(ctx, "Click CheckoutInvoice: marshal failed", zap.Error(err))
 		return structs.CheckoutInvoiceResponse{}, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonData))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		s.logger.Error(ctx, "CheckoutInvoice: create http request failed", zap.Error(err))
+		s.logger.Error(ctx, "Click CheckoutInvoice: failed to create request", zap.Error(err))
 		return structs.CheckoutInvoiceResponse{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	httpResp, err := s.client.Do(httpReq)
 	if err != nil {
-		s.logger.Error(ctx, "CheckoutInvoice: http request failed", zap.Error(err))
+		s.logger.Error(ctx, "Click CheckoutInvoice: http request failed", zap.Error(err))
 		return structs.CheckoutInvoiceResponse{}, err
 	}
 	defer httpResp.Body.Close()
 
-	var result structs.CheckoutInvoiceResponse
-	if err := json.NewDecoder(httpResp.Body).Decode(&result); err != nil {
-		s.logger.Error(ctx, "CheckoutInvoice: decode failed", zap.Error(err))
+	var resp structs.CheckoutInvoiceResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		s.logger.Error(ctx, "Click CheckoutInvoice: decode failed", zap.Error(err))
 		return structs.CheckoutInvoiceResponse{}, err
 	}
 
 	if httpResp.StatusCode != http.StatusOK {
-		s.logger.Warn(ctx, "CheckoutInvoice: non-200 status", zap.Int("status", httpResp.StatusCode), zap.Any("resp", result))
-		return result, errors.New(result.ErrorNote)
+		s.logger.Warn(ctx, "Click CheckoutInvoice: non-200 status", zap.Int("status", httpResp.StatusCode), zap.Any("resp", resp))
+		if resp.ErrorNote != "" {
+			return resp, errors.New(resp.ErrorNote)
+		}
+		return resp, fmt.Errorf("click invoice non-200: %d", httpResp.StatusCode)
 	}
 
-	// Agar invoice yaratildi va siz invoices jadvaliga yozmoqchi bo'lsangiz:
-	// repo.CreateInvoice(ctx, invoice) chaqiruvi qo'yilishi mumkin — quyida repo interfeys qismi izohlangan.
-	return result, nil
+	if resp.ErrorCode != 0 {
+		return resp, errors.New(resp.ErrorNote)
+	}
+
+	return resp, nil
 }
 
-// Retrieve — Click API orqali request_id yoki transaction_id bo'yicha ma'lumot olish.
-// Eslatma: Click retrieve endpoint metodi (GET/POST) va parametr nomlarini Click hujjatlariga moslang.
 func (s *service) Retrieve(ctx context.Context, requestId string) (structs.RetrieveResponse, error) {
 	url := "https://api.click.uz/v2/internal/checkout/retrieve"
 
 	payload := map[string]string{
 		"request_id": requestId,
 	}
-	jsonData, err := json.Marshal(payload)
+	body, err := json.Marshal(payload)
 	if err != nil {
-		s.logger.Error(ctx, "Retrieve: marshal payload failed", zap.Error(err))
+		s.logger.Error(ctx, "Click Retrieve: marshal failed", zap.Error(err))
 		return structs.RetrieveResponse{}, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonData))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		s.logger.Error(ctx, "Retrieve: create http request failed", zap.Error(err))
+		s.logger.Error(ctx, "Click Retrieve: failed to create request", zap.Error(err))
 		return structs.RetrieveResponse{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	httpResp, err := s.client.Do(httpReq)
 	if err != nil {
-		s.logger.Error(ctx, "Retrieve: http request failed", zap.Error(err))
+		s.logger.Error(ctx, "Click Retrieve: http request failed", zap.Error(err))
 		return structs.RetrieveResponse{}, err
 	}
 	defer httpResp.Body.Close()
 
-	var result structs.RetrieveResponse
-	if err := json.NewDecoder(httpResp.Body).Decode(&result); err != nil {
-		s.logger.Error(ctx, "Retrieve: decode failed", zap.Error(err))
+	var resp structs.RetrieveResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		s.logger.Error(ctx, "Click Retrieve: decode failed", zap.Error(err))
 		return structs.RetrieveResponse{}, err
 	}
 
 	if httpResp.StatusCode != http.StatusOK {
-		s.logger.Warn(ctx, "Retrieve: non-200 status", zap.Int("status", httpResp.StatusCode), zap.Any("resp", result))
-		// qaytadigan ma'lumotga asosan xatolikni qaytaring
-		return result, errors.New("retrieve failed")
-	}
-
-	return result, nil
-}
-
-// HandleCompleteCallback — Click tomonidan kelgan `complete` callback body sini o'qiydi, parse qiladi va repo orqali invoice/order holatini yangilaydi.
-// NOTE: Click hujjatlaridagi signature / token tekshiruvini shu yerga qo'shish zarur (masalan header yoki body ichidagi sign).
-func (s *service) HandleCompleteCallback(ctx context.Context, body io.Reader) error {
-	// Click complete callback modelini structs ga moslab yozing — misol uchun quyidagicha:
-	var cb struct {
-		ErrorCode    int64  `json:"error_code"`
-		ErrorNote    string `json:"error_note"`
-		RequestId    string `json:"request_id"`
-		Amount       int64  `json:"amount"`
-		ClickTransID int64  `json:"click_trans_id"`
-		// boshqa maydonlar...
-	}
-
-	if err := json.NewDecoder(body).Decode(&cb); err != nil {
-		s.logger.Error(ctx, "HandleCompleteCallback: decode failed", zap.Error(err))
-		return err
-	}
-
-	// TODO: signature tekshirish — Click docs ga ko'ra bu yerda verify qiling (masalan secret + sign param).
-	// if !verifySignature(...) { return errors.New("invalid signature") }
-
-	if cb.ErrorCode == 0 {
-		if err := s.clickrepo.UpdateStatus(ctx, cb.RequestId, "PAID"); err != nil {
-			s.logger.Error(ctx, "HandleCompleteCallback: repo update failed", zap.Error(err))
-			return err
+		s.logger.Warn(ctx, "Click Retrieve: non-200 status", zap.Int("status", httpResp.StatusCode), zap.Any("resp", resp))
+		if resp.ErrorNote != "" {
+			return resp, errors.New(resp.ErrorNote)
 		}
-	} else {
-		// xatolik bo'lsa statusni FAILED yoki boshqa holatga o'zgartirish
-		if err := s.clickrepo.UpdateStatus(ctx, cb.RequestId, "UNPAID"); err != nil {
-			s.logger.Error(ctx, "HandleCompleteCallback: repo update failed", zap.Error(err))
-			return err
-		}
+		return resp, fmt.Errorf("click retrieve non-200: %d", httpResp.StatusCode)
 	}
 
-	return nil
+	// Retrieve response ham error_code bilan keladi (agar structda bo'lsa)
+	// if resp.ErrorCode != 0 { return resp, errors.New(resp.ErrorNote) }
+
+	return resp, nil
 }

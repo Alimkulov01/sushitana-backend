@@ -1,101 +1,98 @@
 package structs
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
-// CheckoutPrepareRequest — prepare endpoint uchun so'rov modeli.
-// Eslatma: JSON tag lar Click hujjatlariga mos bo'lishi kerak.
-// Merk: Amount int64 (tushunarliroq) — agar Click so‘rovi string talab qilsa originalga moslang.
+type ClickPrepareRequest struct {
+	ClickTransId    int64  `form:"click_trans_id" binding:"required"`
+	ServiceId       int64  `form:"service_id" binding:"required"`
+	ClickPaydocId   int64  `form:"click_paydoc_id" binding:"required"`
+	MerchantTransId string `form:"merchant_trans_id" binding:"required"`
+	Amount          string `form:"amount" binding:"required"`
+	Action          int    `form:"action" binding:"required"` // 0
+	Error           int    `form:"error" binding:"required"`
+	ErrorNote       string `form:"error_note"`
+	SignTime        string `form:"sign_time" binding:"required"`
+	SignString      string `form:"sign_string" binding:"required"`
+}
+type ClickPrepareResponse struct {
+	ClickTransId      int64  `json:"click_trans_id"`
+	MerchantTransId   string `json:"merchant_trans_id"`
+	MerchantPrepareId int64  `json:"merchant_prepare_id"`
+	Error             int    `json:"error"`
+	ErrorNote         string `json:"error_note"`
+}
+
+type ClickCompleteRequest struct {
+	ClickTransId      int64  `form:"click_trans_id" binding:"required"`
+	ServiceId         int64  `form:"service_id" binding:"required"`
+	ClickPaydocId     int64  `form:"click_paydoc_id" binding:"required"`
+	MerchantTransId   string `form:"merchant_trans_id" binding:"required"`
+	MerchantPrepareId int64  `form:"merchant_prepare_id" binding:"required"`
+	Amount            string `form:"amount" binding:"required"`
+	Action            int    `form:"action" binding:"required"` // 1
+	Error             int    `form:"error" binding:"required"`
+	ErrorNote         string `form:"error_note"`
+	SignTime          string `form:"sign_time" binding:"required"`
+	SignString        string `form:"sign_string" binding:"required"`
+}
+
+type ClickCompleteResponse struct {
+	ClickTransId      int64  `json:"click_trans_id"`
+	MerchantTransId   string `json:"merchant_trans_id"`
+	MerchantConfirmId int64  `json:"merchant_confirm_id"`
+	Error             int    `json:"error"`
+	ErrorNote         string `json:"error_note"`
+}
+
+type Invoice struct {
+	ID                string
+	ClickInvoiceID    int64
+	ClickTransID      sql.NullInt64
+	ClickPaydocID     sql.NullInt64
+	MerchantPrepareID sql.NullInt64
+	MerchantTransID   string
+	OrderID           sql.NullString
+	TgID              sql.NullInt64
+	CustomerPhone     sql.NullString
+	Amount            string
+	Currency          string
+	Status            string
+	Comment           sql.NullString
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type CheckoutPrepareRequest struct {
-	ServiceID        string `json:"service_id"`
-	MerchantID       string `json:"merchant_id"` // typo tuzatildi (MerchatID -> MerchantID)
-	TransactionParam string `json:"transaction_param"`
-	Amount           int64  `json:"amount"`
-	ReturnUrl        string `json:"return_url"`
-	Source           string `json:"source,omitempty"`
-	Description      string `json:"description,omitempty"`
-	// TotalPrice may be internal field — agar Clickga kerak bo'lsa qoldiring
-	TotalPrice int64  `json:"total_price,omitempty"`
-	Items      []Item `json:"items,omitempty"`
+	ServiceID        string      `json:"service_id"`
+	MerchantID       string      `json:"merchant_id"`
+	TransactionParam string      `json:"transaction_param"`
+	Amount           float64     `json:"amount"`
+	ReturnUrl        string      `json:"return_url,omitempty"`
+	Description      string      `json:"description,omitempty"`
+	Items            interface{} `json:"items,omitempty"`
 }
 
-// Item — mahsulot haqida qisqacha ma'lumot (agar Click API itemlarni qabul qilsa)
-type Item struct {
-	Name  string `json:"name"`
-	Price int64  `json:"price"`
-	Qty   int64  `json:"qty,omitempty"`
-}
-
-// CheckoutPrepareResponse — prepare javobi
 type CheckoutPrepareResponse struct {
-	ErrorCode int64  `json:"error_code"`
-	ErrorNote string `json:"error_note"`
 	RequestId string `json:"request_id"`
+	ErrorCode int    `json:"error_code"`
+	ErrorNote string `json:"error_note"`
 }
 
-// CheckoutInvoiceRequest — invoice yaratish uchun so'rov
 type CheckoutInvoiceRequest struct {
 	RequestId   string `json:"request_id"`
 	PhoneNumber string `json:"phone_number"`
 }
 
-// CheckoutInvoiceResponse — invoice yaratish javobi
 type CheckoutInvoiceResponse struct {
-	ErrorCode int64  `json:"error_code"`
-	ErrorNote string `json:"error_note"`
 	InvoiceId int64  `json:"invoice_id"`
+	ErrorCode int    `json:"error_code"`
+	ErrorNote string `json:"error_note"`
 }
 
-// RetrieveResponse — Click retrieve endpoint javobi
 type RetrieveResponse struct {
-	RequestId         string  `json:"request_id"`
-	ServiceId         int64   `json:"service_id"`
-	MerchantId        int64   `json:"merchant_id"`
-	ServiceName       string  `json:"service_name"`
-	TransactionParam  string  `json:"transaction_param"`
-	Amount            int64   `json:"amount"`
-	Language          string  `json:"language"`
-	ReturnUrl         string  `json:"return_url"`
-	CommissionPercent int64   `json:"commission_percent"`
-	Payment           Payment `json:"payment"`
-}
-
-type Payment struct {
-	PaymentStatusDescription string `json:"payment_status_description"`
-	PaymentId                string `json:"payment_id"`
-	PaymentStatus            int64  `json:"payment_status"`
-	IsInvoice                int64  `json:"is_invoice"`
-	PhoneNumber              string `json:"phone_number"`
-}
-
-// Invoice — invoices jadvaliga mos model (DB bilan moslashgan).
-type Invoice struct {
-	ID string `json:"id"` // UUID
-
-	ClickInvoiceID  int64  `json:"click_invoice_id"`
-	ClickTransID    int64  `json:"click_trans_id"`
-	MerchantTransID string `json:"merchant_trans_id"` // order ID yoki transaction_param
-
-	OrderID string `json:"order_id"` // orders jadvalidagi id
-	TgID    int64  `json:"tg_id"`
-
-	CustomerPhone string  `json:"customer_phone"`
-	Amount        float64 `json:"amount"`
-	Currency      string  `json:"currency"` // UZS
-
-	Status string `json:"status"` // CREATED, PENDING, PAID, FAILED
-
-	Comment   string    `json:"comment"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type CompleteCallbackPayload struct {
-	ErrorCode       int64  `json:"error_code"`
-	ErrorNote       string `json:"error_note"`
-	RequestId       string `json:"request_id"`
-	ClickTransId    int64  `json:"click_trans_id"`
-	MerchantTransId string `json:"merchant_trans_id"`
-	Amount          int64  `json:"amount"`
-	Action          int    `json:"action"`
-	Sign            string `json:"sign"`
+	ErrorCode int    `json:"error_code"`
+	ErrorNote string `json:"error_note"`
 }
