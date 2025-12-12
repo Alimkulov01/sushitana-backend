@@ -50,7 +50,7 @@ type OrderProduct struct {
 
 type CreateOrder struct {
 	TgID           int64          `json:"tgId"`
-	Address        *Address       `json:"address"`
+	Address        Address        `json:"address"`
 	DeliveryType   string         `json:"deliveryType"`
 	PaymentMethod  string         `json:"paymentMethod"`
 	Products       []OrderProduct `json:"products"`
