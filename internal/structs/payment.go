@@ -98,7 +98,7 @@ type RetrieveResponse struct {
 }
 
 type CreateInvoiceRequest struct {
-	ServiceID       string  `json:"service_id"`
+	ServiceID       int64   `json:"service_id"`
 	MerchantTransId string  `json:"merchant_trans_id"`
 	Amount          float64 `json:"amount"`
 	PhoneNumber     string  `json:"phone_number"`

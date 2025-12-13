@@ -95,7 +95,7 @@ func (s *service) validateCompleteSign(req structs.ClickCompleteRequest, secret 
 }
 
 func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareRequest) (structs.ClickPrepareResponse, error) {
-	if req.Action != nil {
+	if *req.Action != 0 {
 		return structs.ClickPrepareResponse{
 			ClickTransId:    req.ClickTransId,
 			MerchantTransId: req.MerchantTransId,
@@ -278,7 +278,10 @@ func (s *service) CreateClickInvoice(ctx context.Context, req structs.CreateInvo
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Auth", auth)
-
+	s.logger.Info(ctx, "click invoice/create outgoing",
+		zap.ByteString("body", body),
+		zap.String("auth", auth),
+	)
 	httpResp, err := s.client.Do(httpReq)
 	if err != nil {
 		return structs.CreateInvoiceResponse{}, err

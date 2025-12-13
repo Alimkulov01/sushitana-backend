@@ -87,11 +87,11 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 	switch req.PaymentMethod {
 	case "CLICK":
-		serviceId := os.Getenv("CLICK_SERVICE_ID")
+		serviceId := cast.ToInt64(os.Getenv("CLICK_SERVICE_ID"))
 		merchantId := os.Getenv("CLICK_MERCHANT_ID")
 
 		merchantTransID := order.Order.OrderNumber
-
+		fmt.Println(cast.ToString(merchantTransID))
 		invoiceResp, err := s.clickSvc.CreateClickInvoice(ctx, structs.CreateInvoiceRequest{
 			ServiceID:       serviceId,
 			MerchantTransId: cast.ToString(merchantTransID),
@@ -127,8 +127,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		// if reqID == "" {
 		// 	return "", fmt.Errorf("no request_id returned from click prepare")
 		// }
-		orderID := cast.ToString(order.Order.OrderNumber)
-		payURL = BuildClickPayURL(serviceId, merchantId, 1000, orderID, os.Getenv("CLICK_RETURN_URL"))
+		payURL = BuildClickPayURL(serviceId, merchantId, 1000, cast.ToString(merchantTransID), os.Getenv("CLICK_RETURN_URL"))
 
 		// 3) order status
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
@@ -227,9 +226,9 @@ func ParseDeliveryMethod(v string) (DeliveryMethod, error) {
 	}
 }
 
-func BuildClickPayURL(serviceID, merchantID string, amountInt int64, orderID, returnURL string) string {
+func BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string {
 	v := url.Values{}
-	v.Set("service_id", serviceID)
+	v.Set("service_id", cast.ToString(serviceID))
 	v.Set("merchant_id", merchantID)
 	v.Set("amount", fmt.Sprintf("%d.00", amountInt)) // N.NN format :contentReference[oaicite:3]{index=3}
 	v.Set("transaction_param", orderID)              // => merchant_trans_id :contentReference[oaicite:4]{index=4}

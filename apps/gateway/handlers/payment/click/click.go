@@ -62,11 +62,13 @@ func (h *handler) Prepare(c *gin.Context) {
 	)
 
 	var req structs.ClickPrepareRequest
-	if err := c.ShouldBind(&req); err != nil {
-		h.logger.Warn(ctx, "click prepare bind failed", zap.Error(err))
-		c.JSON(http.StatusOK, structs.ClickPrepareResponse{
-			Error:     -8,
-			ErrorNote: "Error in request from click",
+	if err := c.ShouldBind(&req); err != nil || req.MerchantTransId == "" {
+		c.JSON(200, structs.ClickPrepareResponse{
+			ClickTransId:      req.ClickTransId,
+			MerchantTransId:   req.MerchantTransId,
+			MerchantPrepareId: 0,
+			Error:             -8,
+			ErrorNote:         "Error in request from click",
 		})
 		return
 	}
