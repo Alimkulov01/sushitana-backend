@@ -9,7 +9,7 @@ type ClickPrepareRequest struct {
 	ClickTransId    int64  `form:"click_trans_id" binding:"required"`
 	ServiceId       int64  `form:"service_id" binding:"required"`
 	ClickPaydocId   int64  `form:"click_paydoc_id" binding:"required"`
-	MerchantTransId string `form:"merchant_trans_id" json:"merchant_trans_id" binding:"required"`
+	MerchantTransId string `form:"merchant_trans_id"` 
 	Amount          string `form:"amount" binding:"required"`
 	Action          *int   `form:"action" binding:"required,oneof=0 1"`
 	Error           *int   `form:"error" binding:"required"`
@@ -19,7 +19,7 @@ type ClickPrepareRequest struct {
 }
 type ClickPrepareResponse struct {
 	ClickTransId      int64  `json:"click_trans_id"`
-	MerchantTransId   string `form:"merchant_trans_id" json:"merchant_trans_id" binding:"required"`
+	MerchantTransId   string `form:"merchant_trans_id"` 
 	MerchantPrepareId int64  `json:"merchant_prepare_id"`
 	Error             int    `json:"error"`
 	ErrorNote         string `json:"error_note"`

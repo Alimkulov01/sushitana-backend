@@ -88,7 +88,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	switch req.PaymentMethod {
 	case "CLICK":
 		serviceId := cast.ToInt64(os.Getenv("CLICK_SERVICE_ID"))
-		merchantId := os.Getenv("CLICK_MERCHANT_ID")
+		// merchantId := os.Getenv("CLICK_MERCHANT_ID")
 
 		merchantTransID := order.Order.OrderNumber
 		fmt.Println(cast.ToString(merchantTransID))
@@ -111,7 +111,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			OrderID:         sql.NullString{String: order.Order.ID, Valid: true},
 			TgID:            sql.NullInt64{Int64: order.Order.TgID, Valid: true},
 			CustomerPhone:   sql.NullString{String: order.Phone, Valid: true},
-			Amount:          cast.ToString(order.Order.TotalCount), // yoki string/decimal bo'lsa moslang
+			Amount:          cast.ToString(1000), // yoki string/decimal bo'lsa moslang
 			Currency:        "UZS",
 			Status:          "WAITING_PAYMENT",
 			Comment:         sql.NullString{String: cast.ToString(invoiceResp.InvoiceId), Valid: true}, // ixtiyoriy: request_id ni commentga saqlab qo'yish
@@ -127,7 +127,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		// if reqID == "" {
 		// 	return "", fmt.Errorf("no request_id returned from click prepare")
 		// }
-		payURL = BuildClickPayURL(serviceId, merchantId, 1000, cast.ToString(merchantTransID), os.Getenv("CLICK_RETURN_URL"))
+		// payURL = BuildClickPayURL(serviceId, merchantId, 1000, cast.ToString(merchantTransID), os.Getenv("CLICK_RETURN_URL"))
 
 		// 3) order status
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{

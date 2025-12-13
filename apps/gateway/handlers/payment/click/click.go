@@ -2,6 +2,7 @@ package click
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -62,6 +63,8 @@ func (h *handler) Prepare(c *gin.Context) {
 	)
 
 	var req structs.ClickPrepareRequest
+	fmt.Println(req.MerchantTransId)
+	fmt.Println(req.ClickTransId)
 	if err := c.ShouldBind(&req); err != nil || req.MerchantTransId == "" {
 		c.JSON(200, structs.ClickPrepareResponse{
 			ClickTransId:      req.ClickTransId,
