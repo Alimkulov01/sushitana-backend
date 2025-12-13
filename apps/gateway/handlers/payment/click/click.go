@@ -124,6 +124,11 @@ func (h *handler) Complete(c *gin.Context) {
 		c.JSON(http.StatusOK, resp)
 		return
 	}
+	if strings.TrimSpace(req.MerchantTransId) == "" {
+		h.logger.Info(ctx, "click complete response", zap.Any("resp", resp))
+		c.JSON(http.StatusOK, resp)
+		return
+	}
 
 	if resp.Error == 0 {
 		inv, e := h.clickRepo.GetByMerchantTransID(ctx, req.MerchantTransId)

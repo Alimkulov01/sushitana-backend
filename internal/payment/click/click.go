@@ -84,6 +84,9 @@ func (s *service) validatePrepareSign(req structs.ClickPrepareRequest, secret st
 }
 
 func (s *service) validateCompleteSign(req structs.ClickCompleteRequest, secret string) bool {
+	if req.Action == nil {
+		return false
+	}
 	raw := fmt.Sprintf("%d%d%s%s%d%s%d%s",
 		req.ClickTransId,
 		req.ServiceId,
@@ -91,19 +94,17 @@ func (s *service) validateCompleteSign(req structs.ClickCompleteRequest, secret 
 		req.MerchantTransId,
 		req.MerchantPrepareId,
 		normalizeAmount(req.Amount),
-		req.Action,
+		*req.Action, // <-- FIX: deref
 		req.SignTime,
 	)
 	return strings.EqualFold(md5hex(raw), req.SignString)
 }
-
 func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareRequest) (structs.ClickPrepareResponse, error) {
-	if *req.Action != 0 {
+	if req.Action == nil || *req.Action != 0 {
 		return structs.ClickPrepareResponse{
-			ClickTransId:    req.ClickTransId,
-			MerchantTransId: req.MerchantTransId,
-			Error:           -3,
-			ErrorNote:       "Action not found",
+			ClickTransId: req.ClickTransId,
+			Error:        -3,
+			ErrorNote:    "Action not found",
 		}, nil
 	}
 
