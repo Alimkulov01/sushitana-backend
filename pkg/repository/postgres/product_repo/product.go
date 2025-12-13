@@ -271,6 +271,11 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Product, error) 
 				weight
 			FROM product
 			WHERE id = $1
+			AND EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(size_prices) AS sp
+				WHERE (sp->'price'->>'currentPrice')::bigint > 0
+			)
 		`
 	)
 	err := r.db.QueryRow(ctx, query, id).Scan(
@@ -346,10 +351,16 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 			updated_at,
 			weight
 		FROM product
+		
 		WHERE 
 			name->>'uz' ILIKE $1 OR
 			name->>'ru' ILIKE $1 OR
 			name->>'en' ILIKE $1
+		AND EXISTS (
+			SELECT 1
+			FROM jsonb_array_elements(size_prices) AS sp
+			WHERE (sp->'price'->>'currentPrice')::bigint > 0
+		)
 		LIMIT 1
 	`
 
@@ -406,7 +417,7 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 		offset = req.Offset
 	}
 
-	where := "WHERE TRUE"
+	where := "WHERE TRUE "
 	args := []interface{}{limit, offset}
 	argID := 3
 	if req.Search != "" {
@@ -452,6 +463,11 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 			weight
 		FROM product
 		%s
+		AND EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(size_prices) AS sp
+				WHERE (sp->'price'->>'currentPrice')::bigint > 0
+			)
 		LIMIT $1 OFFSET $2
 	`, where)
 
@@ -657,6 +673,11 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 		WHERE c.name->>'uz' ILIKE $1 OR
 			  c.name->>'ru' ILIKE $1 OR
 			  c.name->>'en' ILIKE $1
+			  AND EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(size_prices) AS sp
+				WHERE (sp->'price'->>'currentPrice')::bigint > 0
+			)
 		ORDER BY p.created_at DESC
 	`
 

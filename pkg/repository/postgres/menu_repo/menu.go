@@ -90,6 +90,13 @@ func (r repo) GetMenu(ctx context.Context) ([]structs.Menu, error) {
 				)
 				FROM product p
 				WHERE p.parent_group = c.id
+				AND EXISTS (
+					SELECT 1
+					FROM jsonb_array_elements(COALESCE(p.size_prices, '[]'::jsonb)) AS sp
+					WHERE COALESCE(NULLIF(sp->'price'->>'currentPrice','')::bigint, 0) > 0
+				)
+				AND COALESCE(p.is_active, false) = true
+				AND COALESCE(p.is_deleted, false) = false
 			) AS products
 		FROM category c
 		WHERE c.is_active = TRUE
