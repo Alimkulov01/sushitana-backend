@@ -68,13 +68,16 @@ func normalizeAmount(s string) string {
 }
 
 func (s *service) validatePrepareSign(req structs.ClickPrepareRequest, secret string) bool {
+	if req.Action == nil {
+		return false
+	}
 	raw := fmt.Sprintf("%d%d%s%s%s%d%s",
 		req.ClickTransId,
 		req.ServiceId,
 		secret,
 		req.MerchantTransId,
 		normalizeAmount(req.Amount),
-		req.Action,
+		*req.Action, // <-- DEREF
 		req.SignTime,
 	)
 	return strings.EqualFold(md5hex(raw), req.SignString)
@@ -112,10 +115,24 @@ func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareReque
 
 	if !s.validatePrepareSign(req, secret) {
 		return structs.ClickPrepareResponse{
-			ClickTransId:    req.ClickTransId,
-			MerchantTransId: req.MerchantTransId,
-			Error:           -1,
-			ErrorNote:       "SIGN CHECK FAILED!",
+			ClickTransId: req.ClickTransId,
+			Error:        -1,
+			ErrorNote:    "SIGN CHECK FAILED!",
+		}, nil
+	}
+
+	if strings.TrimSpace(req.MerchantTransId) == "" {
+		s.logger.Warn(ctx, "click prepare without merchant_trans_id (invoice/SMS flow)",
+			zap.Int64("click_trans_id", req.ClickTransId),
+			zap.Int64("click_paydoc_id", req.ClickPaydocId),
+			zap.String("amount", req.Amount),
+		)
+		return structs.ClickPrepareResponse{
+			ClickTransId:      req.ClickTransId,
+			MerchantTransId:   "",
+			MerchantPrepareId: req.ClickPaydocId, // stabil qiymat
+			Error:             0,
+			ErrorNote:         "Success",
 		}, nil
 	}
 

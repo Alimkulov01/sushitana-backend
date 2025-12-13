@@ -2,9 +2,9 @@ package click
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
@@ -63,15 +63,29 @@ func (h *handler) Prepare(c *gin.Context) {
 	)
 
 	var req structs.ClickPrepareRequest
-	fmt.Println(req.MerchantTransId)
-	fmt.Println(req.ClickTransId)
-	if err := c.ShouldBind(&req); err != nil || req.MerchantTransId == "" {
+	if err := c.ShouldBind(&req); err != nil {
+		h.logger.Warn(ctx, "click prepare bind failed", zap.Error(err))
+		c.JSON(200, structs.ClickPrepareResponse{
+			Error:     -8,
+			ErrorNote: "Error in request from click",
+		})
+		return
+	}
+
+	h.logger.Info(ctx, "click prepare parsed",
+		zap.Int64("click_trans_id", req.ClickTransId),
+		zap.Int64("click_paydoc_id", req.ClickPaydocId),
+		zap.String("merchant_trans_id", req.MerchantTransId),
+		zap.String("amount", req.Amount),
+	)
+
+	if strings.TrimSpace(req.MerchantTransId) == "" {
 		c.JSON(200, structs.ClickPrepareResponse{
 			ClickTransId:      req.ClickTransId,
-			MerchantTransId:   req.MerchantTransId,
-			MerchantPrepareId: 0,
-			Error:             -8,
-			ErrorNote:         "Error in request from click",
+			MerchantTransId:   "",
+			MerchantPrepareId: req.ClickPaydocId, // stabil id
+			Error:             0,
+			ErrorNote:         "Success",
 		})
 		return
 	}
@@ -84,7 +98,6 @@ func (h *handler) Prepare(c *gin.Context) {
 			resp.ErrorNote = "Server error"
 		}
 	}
-
 	c.JSON(http.StatusOK, resp)
 }
 
