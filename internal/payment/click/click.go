@@ -175,18 +175,16 @@ func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareReque
 }
 
 func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error) {
-	if *req.Action != 1 {
+	if req.Action == nil || *req.Action != 1 {
 		return structs.ClickCompleteResponse{
-			ClickTransId:    req.ClickTransId,
-			MerchantTransId: req.MerchantTransId,
-			Error:           -3,
-			ErrorNote:       "Action not found",
+			ClickTransId: req.ClickTransId,
+			Error:        -3,
+			ErrorNote:    "Action not found",
 		}, nil
 	}
 
 	secret := os.Getenv("CLICK_SECRET_KEY")
 	if secret == "" {
-		s.logger.Error(ctx, "CLICK_SECRET_KEY is empty")
 		return structs.ClickCompleteResponse{Error: -8, ErrorNote: "Server config error"}, errors.New("CLICK_SECRET_KEY empty")
 	}
 
@@ -199,14 +197,30 @@ func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteReq
 		}, nil
 	}
 
+	// SMS(invoice) flow: merchant_trans_id bo‘sh kelsa ham to‘lovni sindirmaymiz
+	if strings.TrimSpace(req.MerchantTransId) == "" {
+		s.logger.Warn(ctx, "click complete without merchant_trans_id (invoice/SMS flow)",
+			zap.Int64("click_trans_id", req.ClickTransId),
+			zap.Int64("merchant_prepare_id", req.MerchantPrepareId),
+			zap.String("amount", req.Amount),
+		)
+		return structs.ClickCompleteResponse{
+			ClickTransId:      req.ClickTransId,
+			MerchantTransId:   "",
+			MerchantConfirmId: req.MerchantPrepareId,
+			Error:             0,
+			ErrorNote:         "Success",
+		}, nil
+	}
+
+	// Shop flow (mti bor) => eski repo update
 	status := "PAID"
-	if *req.Error != 0 {
+	if req.Error != nil && *req.Error != 0 {
 		status = "FAILED"
 	}
 
-	invoiceID, orderID, err := s.clickrepo.UpdateOnComplete(ctx, req.MerchantTransId, req.MerchantPrepareId, req.ClickTransId, status)
+	_, _, err := s.clickrepo.UpdateOnComplete(ctx, req.MerchantTransId, req.MerchantPrepareId, req.ClickTransId, status)
 	if err != nil {
-		s.logger.Error(ctx, "UpdateOnComplete failed", zap.Error(err))
 		return structs.ClickCompleteResponse{
 			ClickTransId:    req.ClickTransId,
 			MerchantTransId: req.MerchantTransId,
@@ -214,9 +228,6 @@ func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteReq
 			ErrorNote:       "Failed to update invoice",
 		}, nil
 	}
-
-	_ = orderID
-	_ = invoiceID
 
 	return structs.ClickCompleteResponse{
 		ClickTransId:      req.ClickTransId,
