@@ -109,3 +109,10 @@ type CreateInvoiceResponse struct {
 	ErrorCode int    `json:"error_code"`
 	ErrorNote string `json:"error_note"`
 }
+
+type InvoiceStatusResponse struct {
+	ErrorCode         int    `json:"error_code"`
+	ErrorNote         string `json:"error_note"`
+	InvoiceStatus     int64  `json:"invoice_status"`
+	InvoiceStatusNote string `json:"invoice_status_note"`
+}

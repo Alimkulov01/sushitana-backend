@@ -87,53 +87,65 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 	switch req.PaymentMethod {
 	case "CLICK":
-		serviceId := cast.ToInt64(os.Getenv("CLICK_SERVICE_ID"))
-		// merchantId := os.Getenv("CLICK_MERCHANT_ID")
-
-		merchantTransID := order.Order.OrderNumber
-		fmt.Println(cast.ToString(merchantTransID))
-		invoiceResp, err := s.clickSvc.CreateClickInvoice(ctx, structs.CreateInvoiceRequest{
-			ServiceID:       serviceId,
-			MerchantTransId: cast.ToString(merchantTransID),
-			Amount:          1000.0,
-			PhoneNumber:     order.Phone,
-		})
-		if err != nil {
-			s.logger.Error(ctx, "->clickSvc.CheckoutInvoice failed", zap.Error(err), zap.String("order_id", id))
-			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
-			return "", fmt.Errorf("checkout invoice failed: %w", err)
+		serviceId := os.Getenv("CLICK_SERVICE_ID")
+		merchantId := os.Getenv("CLICK_MERCHANT_ID")
+		if serviceId == "" || merchantId == "" {
+			return "", fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env yo‘q")
 		}
 
-		// 1) invoices jadvaliga yozamiz (callback Prepare kelishidan oldin!)
+		// merchant_trans_id bo‘ladigan qiymat (unikal bo‘lsin)
+		merchantTransID := cast.ToString(order.Order.OrderNumber)
+
+		// MUHIM: bu "pul summasi" bo‘lishi kerak (count emas!)
+		// masalan: total = order total + delivery
+		// amountInt := int64(order.Order.TotalPrice) // <-- sizdagi real fieldga moslang
+		amountInt := 1000
+		amount := float64(amountInt)
+
+		// 1) internal/checkout/prepare
+		prep, err := s.clickSvc.CheckoutPrepare(ctx, structs.CheckoutPrepareRequest{
+			ServiceID:        serviceId,
+			MerchantID:       merchantId,
+			TransactionParam: merchantTransID, // => callback’da merchant_trans_id bo‘lib keladi
+			Amount:           amount,
+			ReturnUrl:        os.Getenv("CLICK_RETURN_URL"),
+			Description:      fmt.Sprintf("Order #%s", merchantTransID),
+		})
+		if err != nil {
+			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
+			return "", fmt.Errorf("click checkout/prepare failed: %w", err)
+		}
+
+		// 2) internal/checkout/invoice (SMS yuboradi)
+		invResp, err := s.clickSvc.CheckoutInvoice(ctx, structs.CheckoutInvoiceRequest{
+			RequestId:   prep.RequestId,
+			PhoneNumber: order.Phone, // formatni Click talabiga moslab yuboring
+		})
+		if err != nil {
+			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
+			return "", fmt.Errorf("click checkout/invoice failed: %w", err)
+		}
+
+		// 3) invoices jadvaliga yozib qo‘ying
 		inv := structs.Invoice{
-			ClickInvoiceID:  invoiceResp.InvoiceId, // sizning struct field nomingizga moslang
-			MerchantTransID: cast.ToString(merchantTransID),
+			ClickInvoiceID:  invResp.InvoiceId,
+			MerchantTransID: merchantTransID,
 			OrderID:         sql.NullString{String: order.Order.ID, Valid: true},
 			TgID:            sql.NullInt64{Int64: order.Order.TgID, Valid: true},
 			CustomerPhone:   sql.NullString{String: order.Phone, Valid: true},
-			Amount:          cast.ToString(1000), // yoki string/decimal bo'lsa moslang
+			Amount:          cast.ToString(amountInt),
 			Currency:        "UZS",
 			Status:          "WAITING_PAYMENT",
-			Comment:         sql.NullString{String: cast.ToString(invoiceResp.InvoiceId), Valid: true}, // ixtiyoriy: request_id ni commentga saqlab qo'yish
 		}
+		_ = s.clickRepo.Create(ctx, inv)
 
-		if err := s.clickRepo.Create(ctx, inv); err != nil {
-			s.logger.Error(ctx, "->clickRepo.Create invoice failed", zap.Error(err), zap.String("order_id", id))
-			// xohlasangiz order status UNPAID qilib qo'ying va return qiling
-		}
-
-		// 2) pay URL
-		// reqID := prepareResp.RequestId
-		// if reqID == "" {
-		// 	return "", fmt.Errorf("no request_id returned from click prepare")
-		// }
-		// payURL = BuildClickPayURL(serviceId, merchantId, 1000, cast.ToString(merchantTransID), os.Getenv("CLICK_RETURN_URL"))
-
-		// 3) order status
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 			OrderId: order.Order.ID,
 			Status:  "WAITING_PAYMENT",
 		})
+
+		// bu flow’da siz link qaytarmaysiz, SMS ketadi
+		payURL = ""
 
 	case "PAYME":
 		// 1) order status -> WAITING_PAYMENT
