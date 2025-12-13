@@ -1,0 +1,5 @@
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS box_count INT DEFAULT 0;
+
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS box_total_price INT DEFAULT 0;
