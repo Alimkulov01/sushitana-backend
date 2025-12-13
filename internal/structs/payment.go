@@ -9,7 +9,7 @@ type ClickPrepareRequest struct {
 	ClickTransId    int64  `form:"click_trans_id" binding:"required"`
 	ServiceId       int64  `form:"service_id" binding:"required"`
 	ClickPaydocId   int64  `form:"click_paydoc_id" binding:"required"`
-	MerchantTransId string `form:"merchant_trans_id"` 
+	MerchantTransId string `form:"merchant_trans_id"`
 	Amount          string `form:"amount" binding:"required"`
 	Action          *int   `form:"action" binding:"required,oneof=0 1"`
 	Error           *int   `form:"error" binding:"required"`
@@ -19,7 +19,7 @@ type ClickPrepareRequest struct {
 }
 type ClickPrepareResponse struct {
 	ClickTransId      int64  `json:"click_trans_id"`
-	MerchantTransId   string `form:"merchant_trans_id"` 
+	MerchantTransId   string `form:"merchant_trans_id"`
 	MerchantPrepareId int64  `json:"merchant_prepare_id"`
 	Error             int    `json:"error"`
 	ErrorNote         string `json:"error_note"`
@@ -29,11 +29,11 @@ type ClickCompleteRequest struct {
 	ClickTransId      int64  `form:"click_trans_id" binding:"required"`
 	ServiceId         int64  `form:"service_id" binding:"required"`
 	ClickPaydocId     int64  `form:"click_paydoc_id" binding:"required"`
-	MerchantTransId   string `form:"merchant_trans_id" binding:"required"`
+	MerchantTransId   string `form:"merchant_trans_id"`
 	MerchantPrepareId int64  `form:"merchant_prepare_id" binding:"required"`
 	Amount            string `form:"amount" binding:"required"`
-	Action            int    `form:"action" binding:"required"` // 1
-	Error             int    `form:"error" binding:"required"`
+	Action            *int   `form:"action" binding:"required,oneof=1"` // 1
+	Error             *int   `form:"error" binding:"required"`
 	ErrorNote         string `form:"error_note"`
 	SignTime          string `form:"sign_time" binding:"required"`
 	SignString        string `form:"sign_string" binding:"required"`
@@ -41,7 +41,7 @@ type ClickCompleteRequest struct {
 
 type ClickCompleteResponse struct {
 	ClickTransId      int64  `json:"click_trans_id"`
-	MerchantTransId   string `json:"merchant_trans_id"`
+	MerchantTransId   string `form:"merchant_trans_id"`
 	MerchantConfirmId int64  `json:"merchant_confirm_id"`
 	Error             int    `json:"error"`
 	ErrorNote         string `json:"error_note"`

@@ -175,7 +175,7 @@ func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareReque
 }
 
 func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error) {
-	if req.Action != 1 {
+	if *req.Action != 1 {
 		return structs.ClickCompleteResponse{
 			ClickTransId:    req.ClickTransId,
 			MerchantTransId: req.MerchantTransId,
@@ -200,7 +200,7 @@ func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteReq
 	}
 
 	status := "PAID"
-	if req.Error != 0 {
+	if *req.Error != 0 {
 		status = "FAILED"
 	}
 

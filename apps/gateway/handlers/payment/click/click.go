@@ -129,7 +129,7 @@ func (h *handler) Complete(c *gin.Context) {
 		inv, e := h.clickRepo.GetByMerchantTransID(ctx, req.MerchantTransId)
 		if e == nil && inv.OrderID.Valid {
 			orderStatus := "PAID"
-			if req.Error != 0 {
+			if *req.Error != 0 {
 				orderStatus = "UNPAID"
 			}
 			if ue := h.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
