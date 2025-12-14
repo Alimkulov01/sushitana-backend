@@ -81,8 +81,8 @@ func NewRouter(params Params) {
 	api.Use(permissionMiddleware)
 
 	{
-		out.POST("/payments/click/complete", params.Shopapi.Complete)
-		out.POST("/payments/click/prepare", params.Shopapi.Prepare)
+		out.POST("/payments/click/complete", params.Click.Complete)
+		out.POST("/payments/click/prepare", params.Click.Prepare)
 		out.POST("/payments/payme", params.Payme.Handle)
 	}
 	clientGroup := api.Group("/client")
