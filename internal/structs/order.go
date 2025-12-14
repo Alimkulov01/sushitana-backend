@@ -19,8 +19,6 @@ type Order struct {
 	TotalPrice     int64          `json:"totalPrice"`
 	OrderNumber    int64          `json:"order_number"`
 	Phone          string         `json:"phone,omitempty"`
-	BoxCount       int64          `json:"box_count"`
-	BoxTotalPrice  int64          `json:"box_total_price"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	UpdateAt       time.Time      `json:"updateAt"`
 }
@@ -34,7 +32,7 @@ type GetListOrderByTgIDResponse struct {
 	Phone  string  `json:"phone"`
 	Orders []Order `json:"orders"`
 }
-
+ 
 type Address struct {
 	Lat        float64 `json:"lat"`
 	Lng        float64 `json:"lng"`
@@ -60,8 +58,6 @@ type CreateOrder struct {
 	Comment        string         `json:"comment"`
 	IIKOOrderID    string         `json:"iikoOrderId"`
 	IIKODeliveryID string         `json:"iikDeliveryId"`
-	BoxCount       int64          `json:"box_count"`
-	BoxTotalPrice  int64          `json:"box_total_price"`
 }
 
 type GetListOrderRequest struct {

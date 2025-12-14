@@ -1,5 +1,5 @@
 CREATE TABLE invoices (
-    id UUID PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     click_invoice_id BIGINT NOT NULL,
     click_trans_id BIGINT,
     merchant_trans_id VARCHAR NOT NULL,

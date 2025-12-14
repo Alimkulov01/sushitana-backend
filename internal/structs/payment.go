@@ -48,11 +48,11 @@ type ClickCompleteResponse struct {
 }
 
 type Invoice struct {
-	ID                string
+	ID                int64
 	ClickInvoiceID    int64
-	ClickTransID      sql.NullInt64
-	ClickPaydocID     sql.NullInt64
-	MerchantPrepareID sql.NullInt64
+	ClickTransID      int64
+	ClickPaydocID     int64
+	MerchantPrepareID int64
 	MerchantTransID   string
 	OrderID           sql.NullString
 	TgID              sql.NullInt64
@@ -115,4 +115,30 @@ type InvoiceStatusResponse struct {
 	ErrorNote         string `json:"error_note"`
 	InvoiceStatus     int64  `json:"invoice_status"`
 	InvoiceStatusNote string `json:"invoice_status_note"`
+}
+
+type ClickInvoiceStatusResponse struct {
+	ErrorCode         int    `json:"error_code"`
+	ErrorNote         string `json:"error_note"`
+	InvoiceStatus     int    `json:"invoice_status"`
+	InvoiceStatusNote string `json:"invoice_status_note"`
+}
+
+type UpdatePaymentStatus struct {
+	OrderId string `json:"orderId"`
+	Status  string `json:"status"` // PAID / UNPAID / PENDING ...
+}
+
+type ClickPaymentAttempt struct {
+	ID                int64 // shu ID -> merchant_prepare_id bo‘ladi
+	MerchantTransID   string
+	ClickTransID      int64
+	ClickPaydocID     int64
+	Amount            string
+	State             string // "PENDING" | "PAID" | "CANCELLED"
+	MerchantConfirmID int64
+	Error             int
+	ErrorNote         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }

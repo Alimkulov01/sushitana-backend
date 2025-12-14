@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/cast"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 
@@ -28,6 +29,7 @@ type (
 	Handler interface {
 		Prepare(c *gin.Context)
 		Complete(c *gin.Context)
+		CheckInvoice(c *gin.Context)
 	}
 
 	Params struct {
@@ -302,3 +304,57 @@ func (h *handler) Complete(c *gin.Context) {
 
 // Optional: if you want to reuse ctx in helpers later.
 func _ctx(_ context.Context) {}
+
+func (h *handler) CheckInvoice(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	invoiceID := cast.ToInt64(c.Query("invoice_id"))
+	if invoiceID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invoice_id required"})
+		return
+	}
+
+	serviceID := cast.ToInt64(os.Getenv("CLICK_SERVICE_ID"))
+	if serviceID == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "CLICK_SERVICE_ID empty"})
+		return
+	}
+
+	st, err := h.clickSvc.InvoiceStatus(ctx, serviceID, invoiceID)
+	if err != nil {
+		h.logger.Error(ctx, "invoice status failed", zap.Error(err))
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	// NOTE: invoice_status mappingni siz 1 marta log qilib aniq qilib olasiz.
+	// Hozircha note ichidan tekshiramiz (ishlab turadi).
+	note := strings.ToLower(st.InvoiceStatusNote)
+	paid := strings.Contains(note, "success") ||
+		strings.Contains(note, "paid") ||
+		strings.Contains(note, "успеш") ||
+		strings.Contains(note, "оплач")
+
+	if paid {
+		inv, e := h.clickRepo.GetByInvoiceID(ctx, invoiceID)
+		if e == nil && inv.OrderID.Valid {
+			_ = h.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
+				OrderId: inv.OrderID.String,
+				Status:  "PAID",
+			})
+			_ = h.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+				OrderId: inv.OrderID.String,
+				Status:  "WAITING_OPERATOR",
+			})
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"invoice_id": invoiceID,
+		"error_code": st.ErrorCode,
+		"error_note": st.ErrorNote,
+		"status":     st.InvoiceStatus,
+		"note":       st.InvoiceStatusNote,
+		"paid":       paid,
+	})
+}

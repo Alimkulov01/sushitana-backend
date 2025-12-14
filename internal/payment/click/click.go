@@ -38,6 +38,7 @@ type Service interface {
 	CheckoutInvoice(ctx context.Context, req structs.CheckoutInvoiceRequest) (structs.CheckoutInvoiceResponse, error)
 	Retrieve(ctx context.Context, requestId string) (structs.RetrieveResponse, error)
 	CreateClickInvoice(ctx context.Context, req structs.CreateInvoiceRequest) (structs.CreateInvoiceResponse, error)
+	InvoiceStatus(ctx context.Context, serviceID int64, invoiceID int64) (structs.ClickInvoiceStatusResponse, error)
 
 	ShopPrepare(ctx context.Context, req structs.ClickPrepareRequest) (structs.ClickPrepareResponse, error)
 	ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error)
@@ -420,40 +421,52 @@ func (s *service) Retrieve(ctx context.Context, requestId string) (structs.Retri
 	return resp, nil
 }
 
-func (s *service) InvoiceStatus(ctx context.Context, serviceID int64, invoiceID int64) (structs.InvoiceStatusResponse, error) {
-	url := fmt.Sprintf("https://api.click.uz/v2/merchant/invoice/status/%d/%d", serviceID, invoiceID)
-
-	auth := buildClickAuth(os.Getenv("CLICK_MERCHANT_USER_ID"), os.Getenv("CLICK_SECRET_KEY"))
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return structs.InvoiceStatusResponse{}, err
+func (s *service) buildAuth() (string, error) {
+	merchantUserID := os.Getenv("CLICK_MERCHANT_USER_ID")
+	secretKey := os.Getenv("CLICK_SECRET_KEY")
+	if merchantUserID == "" || secretKey == "" {
+		return "", fmt.Errorf("CLICK_MERCHANT_USER_ID yoki CLICK_SECRET_KEY empty")
 	}
 
-	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Auth", auth)
-
-	httpResp, err := s.client.Do(httpReq)
-	if err != nil {
-		return structs.InvoiceStatusResponse{}, err
-	}
-	defer httpResp.Body.Close()
-
-	var resp structs.InvoiceStatusResponse
-	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
-		return structs.InvoiceStatusResponse{}, err
-	}
-
-	if httpResp.StatusCode != 200 || resp.ErrorCode != 0 {
-		return resp, fmt.Errorf("invoice/status failed: status=%d err=%d note=%s", httpResp.StatusCode, resp.ErrorCode, resp.ErrorNote)
-	}
-	return resp, nil
-}
-
-func buildClickAuth(merchantUserID, secretKey string) string {
 	ts := time.Now().Unix()
 	sum := sha1.Sum([]byte(fmt.Sprintf("%d%s", ts, secretKey)))
 	digest := hex.EncodeToString(sum[:])
-	return fmt.Sprintf("%s:%s:%d", merchantUserID, digest, ts)
+
+	return fmt.Sprintf("%s:%s:%d", merchantUserID, digest, ts), nil
+}
+
+func (s *service) InvoiceStatus(ctx context.Context, serviceID int64, invoiceID int64) (structs.ClickInvoiceStatusResponse, error) {
+	auth, err := s.buildAuth()
+	if err != nil {
+		return structs.ClickInvoiceStatusResponse{}, err
+	}
+
+	url := fmt.Sprintf("https://api.click.uz/v2/merchant/invoice/status/%d/%d", serviceID, invoiceID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return structs.ClickInvoiceStatusResponse{}, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Auth", auth)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return structs.ClickInvoiceStatusResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	var out structs.ClickInvoiceStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return structs.ClickInvoiceStatusResponse{}, err
+	}
+
+	if resp.StatusCode != http.StatusOK || out.ErrorCode != 0 {
+		return out, fmt.Errorf("invoice/status failed: http=%d err=%d note=%s",
+			resp.StatusCode, out.ErrorCode, out.ErrorNote)
+	}
+
+	return out, nil
 }

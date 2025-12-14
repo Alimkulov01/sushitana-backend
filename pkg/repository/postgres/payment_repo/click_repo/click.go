@@ -9,7 +9,6 @@ import (
 	"sushitana/pkg/logger"
 	"time"
 
-	"github.com/google/uuid"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -26,8 +25,11 @@ type (
 	}
 
 	Repo interface {
-		Create(ctx context.Context, req structs.Invoice) error
+		Create(ctx context.Context, req structs.Invoice) (int64, error)
 		GetByMerchantTransID(ctx context.Context, merchantTransID string) (structs.Invoice, error)
+		GetByInvoiceID(ctx context.Context, clickInvoiceID int64) (structs.Invoice, error)
+		GetByClickTransID(ctx context.Context, clickTransID int64) (structs.Invoice, error)
+		GetByPrepareID(ctx context.Context, merchantPrepareID int64) (structs.Invoice, error)
 
 		UpsertPrepare(ctx context.Context, merchantTransID string, clickTransID, clickPaydocID int64, amount string) (merchantPrepareID int64, err error)
 		UpdateOnComplete(ctx context.Context, merchantTransID string, merchantPrepareID int64, clickTransID int64, status string) (invoiceID string, orderID sql.NullString, err error)
@@ -45,10 +47,9 @@ func New(p Params) Repo {
 		db:     p.DB,
 	}
 }
-func (r repo) Create(ctx context.Context, req structs.Invoice) error {
+func (r repo) Create(ctx context.Context, req structs.Invoice) (int64, error) {
 	query := `
 		INSERT INTO invoices (
-			id,
 			click_invoice_id,
 			click_trans_id,
 			click_paydoc_id,
@@ -66,9 +67,9 @@ func (r repo) Create(ctx context.Context, req structs.Invoice) error {
 			$1, $2, $3, $4, $5,
 			$6, $7, $8, $9, $10,
 			$11, $12, $13, $14
-		)
+		) RETURNING id
 	`
-
+	var id int64
 	now := time.Now()
 	if req.CreatedAt.IsZero() {
 		req.CreatedAt = now
@@ -77,9 +78,7 @@ func (r repo) Create(ctx context.Context, req structs.Invoice) error {
 		req.UpdatedAt = now
 	}
 
-	id := uuid.NewString()
-	_, err := r.db.Exec(ctx, query,
-		id,
+	err := r.db.QueryRow(ctx, query,
 		req.ClickInvoiceID,
 		req.ClickTransID,  // sql.NullInt64
 		req.ClickPaydocID, // sql.NullInt64
@@ -93,12 +92,14 @@ func (r repo) Create(ctx context.Context, req structs.Invoice) error {
 		req.Comment, // sql.NullString
 		req.CreatedAt,
 		req.UpdatedAt,
+	).Scan(
+		&id,
 	)
 	if err != nil {
 		r.logger.Error(ctx, "failed to insert invoice", zap.Error(err))
-		return err
+		return 0, err
 	}
-	return nil
+	return id, nil
 }
 
 func (r repo) GetByMerchantTransID(ctx context.Context, merchantTransID string) (structs.Invoice, error) {
@@ -211,4 +212,157 @@ func (r repo) UpdateOnComplete(ctx context.Context, merchantTransID string, merc
 	}
 
 	return invoiceID, orderID, nil
+}
+
+func (r repo) GetByInvoiceID(ctx context.Context, clickInvoiceID int64) (structs.Invoice, error) {
+	var resp structs.Invoice
+
+	query := `
+		SELECT
+			id,
+			click_invoice_id,
+			click_trans_id,
+			click_paydoc_id,
+			merchant_prepare_id,
+			merchant_trans_id,
+			order_id,
+			tg_id,
+			customer_phone,
+			amount,
+			currency,
+			status,
+			comment,
+			created_at,
+			updated_at
+		FROM invoices
+		WHERE click_invoice_id = $1
+		LIMIT 1
+	`
+
+	err := r.db.QueryRow(ctx, query, clickInvoiceID).Scan(
+		&resp.ID,
+		&resp.ClickInvoiceID,
+		&resp.ClickTransID,
+		&resp.ClickPaydocID,
+		&resp.MerchantPrepareID,
+		&resp.MerchantTransID,
+		&resp.OrderID,
+		&resp.TgID,
+		&resp.CustomerPhone,
+		&resp.Amount,
+		&resp.Currency,
+		&resp.Status,
+		&resp.Comment,
+		&resp.CreatedAt,
+		&resp.UpdatedAt,
+	)
+
+	if err != nil {
+		r.logger.Warn(ctx, "invoice not found or failed fetching by invoice_id", zap.Error(err))
+		return structs.Invoice{}, err
+	}
+
+	return resp, nil
+}
+
+func (r repo) GetByClickTransID(ctx context.Context, clickTransID int64) (structs.Invoice, error) {
+	var resp structs.Invoice
+
+	query := `
+		SELECT
+			id,
+			click_invoice_id,
+			click_trans_id,
+			click_paydoc_id,
+			merchant_prepare_id,
+			merchant_trans_id,
+			order_id,
+			tg_id,
+			customer_phone,
+			amount,
+			currency,
+			status,
+			comment,
+			created_at,
+			updated_at
+		FROM invoices
+		WHERE click_trans_id = $1
+		LIMIT 1
+	`
+
+	err := r.db.QueryRow(ctx, query, clickTransID).Scan(
+		&resp.ID,
+		&resp.ClickInvoiceID,
+		&resp.ClickTransID,
+		&resp.ClickPaydocID,
+		&resp.MerchantPrepareID,
+		&resp.MerchantTransID,
+		&resp.OrderID,
+		&resp.TgID,
+		&resp.CustomerPhone,
+		&resp.Amount,
+		&resp.Currency,
+		&resp.Status,
+		&resp.Comment,
+		&resp.CreatedAt,
+		&resp.UpdatedAt,
+	)
+
+	if err != nil {
+		r.logger.Warn(ctx, "invoice not found or failed fetching by click_trans_id", zap.Error(err))
+		return structs.Invoice{}, err
+	}
+
+	return resp, nil
+}
+
+func (r repo) GetByPrepareID(ctx context.Context, merchantPrepareID int64) (structs.Invoice, error) {
+	var resp structs.Invoice
+
+	query := `
+		SELECT
+			id,
+			click_invoice_id,
+			click_trans_id,
+			click_paydoc_id,
+			merchant_prepare_id,
+			merchant_trans_id,
+			order_id,
+			tg_id,
+			customer_phone,
+			amount,
+			currency,
+			status,
+			comment,
+			created_at,
+			updated_at
+		FROM invoices
+		WHERE merchant_prepare_id = $1
+		LIMIT 1
+	`
+
+	err := r.db.QueryRow(ctx, query, merchantPrepareID).Scan(
+		&resp.ID,
+		&resp.ClickInvoiceID,
+		&resp.ClickTransID,
+		&resp.ClickPaydocID,
+		&resp.MerchantPrepareID,
+		&resp.MerchantTransID,
+		&resp.OrderID,
+		&resp.TgID,
+		&resp.CustomerPhone,
+		&resp.Amount,
+		&resp.Currency,
+		&resp.Status,
+		&resp.Comment,
+		&resp.CreatedAt,
+		&resp.UpdatedAt,
+	)
+
+	if err != nil {
+		r.logger.Warn(ctx, "invoice not found or failed fetching by click_trans_id", zap.Error(err))
+		return structs.Invoice{}, err
+	}
+
+	return resp, nil
 }

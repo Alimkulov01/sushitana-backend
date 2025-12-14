@@ -13,6 +13,7 @@ import (
 	"sushitana/apps/gateway/handlers/order"
 	"sushitana/apps/gateway/handlers/payment/click"
 	"sushitana/apps/gateway/handlers/payment/payme"
+	shopapi "sushitana/apps/gateway/handlers/payment/shop_api"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
 
@@ -53,6 +54,7 @@ type Params struct {
 	Order     order.Handler
 	Click     click.Handler
 	Payme     payme.Handler
+	Shopapi   shopapi.Handler
 }
 
 func NewRouter(params Params) {
@@ -79,9 +81,8 @@ func NewRouter(params Params) {
 	api.Use(permissionMiddleware)
 
 	{
-		out.POST("/payments/click/complete", params.Click.Complete)
-		out.POST("/payments/click/prepare", params.Click.Prepare)
-
+		out.POST("/payments/click/complete", params.Shopapi.Complete)
+		out.POST("/payments/click/prepare", params.Shopapi.Prepare)
 		out.POST("/payments/payme", params.Payme.Handle)
 	}
 	clientGroup := api.Group("/client")
@@ -108,7 +109,7 @@ func NewRouter(params Params) {
 		productGroup.DELETE("/:id", params.Product.DeleteProduct)
 	}
 	fileGroup := api.Group("/file")
-	
+
 	{
 		fileGroup.POST("/", params.File.CreateFile)
 		fileGroup.GET("/", params.File.GetListFile)
