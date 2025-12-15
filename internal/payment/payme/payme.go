@@ -219,20 +219,37 @@ func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCh
 
 	return structs.PaymeCheckPerformResult{Allow: true}, structs.RPCError{}
 }
-
 func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreateParams) (structs.PaymeCreateResult, structs.RPCError) {
 	orderID, ok := parseOrderID(p.Account)
 	if !ok {
-		return structs.PaymeCreateResult{}, rpcErr(-31050, "Неверный счет", "Hisob noto‘g‘ri", "Invalid account", "order_id")
+		return structs.PaymeCreateResult{}, rpcErr(
+			-31050,
+			"Неверный счет",
+			"Hisob noto‘g‘ri",
+			"Invalid account",
+			"order_id",
+		)
 	}
 
 	ord, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		return structs.PaymeCreateResult{}, rpcErr(-31050, "Счет не найден", "Hisob topilmadi", "Account not found", "order_id")
+		return structs.PaymeCreateResult{}, rpcErr(
+			-31050,
+			"Счет не найден",
+			"Hisob topilmadi",
+			"Account not found",
+			"order_id",
+		)
 	}
 
 	if ord.Order.Status != "WAITING_PAYMENT" {
-		return structs.PaymeCreateResult{}, rpcErr(-31052, "Операция недоступна", "Amalga ruxsat yo‘q", "Operation not allowed", "order_status")
+		return structs.PaymeCreateResult{}, rpcErr(
+			-31052,
+			"Операция недоступна",
+			"Amalga ruxsat yo‘q",
+			"Operation not allowed",
+			"order_status",
+		)
 	}
 
 	expected := expectedAmountTiyinFromOrderTotal(any(ord.Order.TotalPrice))
@@ -240,10 +257,16 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 		expected = int64(math.Round(float64(ord.Order.TotalPrice) * 100))
 	}
 	if p.Amount != expected {
-		return structs.PaymeCreateResult{}, rpcErr(-31001, "Неверная сумма", "Noto‘g‘ri summa", "Incorrect amount", "amount")
+		return structs.PaymeCreateResult{}, rpcErr(
+			-31001,
+			"Неверная сумма",
+			"Noto‘g‘ri summa",
+			"Incorrect amount",
+			"amount",
+		)
 	}
 
-	// 1) Idempotent: transaction bor bo‘lsa qaytaramiz
+	// 1) Idempotent: shu paycom_transaction_id allaqachon yaratilgan bo‘lsa — o‘shani qaytaramiz
 	existing, e := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
 	if e == nil {
 		return structs.PaymeCreateResult{
@@ -255,10 +278,23 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 
 	amountSom := tiyinToSomString(p.Amount)
 
-	// 2) Create: agar shu order uchun boshqa aktiv tx bo‘lsa, sandboxga -31052 qaytarish kerak
+	// 2) Create
 	tx, err := s.paymeRepo.Create(ctx, orderID, p.Id, amountSom, p.Time)
 	if err != nil {
-		if isOneActivePerOrderViolation(err) {
+		// Bir order uchun boshqa aktiv transaction bor (sandbox shu holatda error kutadi)
+		if strings.Contains(err.Error(), "payme_one_active_per_order_uq") &&
+			strings.Contains(err.Error(), "SQLSTATE 23505") {
+
+			// Agar aynan shu id bo‘lsa (race holat), idempotent qaytaramiz
+			ex, e2 := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
+			if e2 == nil {
+				return structs.PaymeCreateResult{
+					Transaction: ex.PaycomTransactionID,
+					State:       ex.State,
+					CreateTime:  ex.CreatedTime,
+				}, structs.RPCError{}
+			}
+
 			return structs.PaymeCreateResult{}, rpcErr(
 				-31052,
 				"Транзакция уже существует",
@@ -269,7 +305,13 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 		}
 
 		s.logger.Error(ctx, "payme CreateTransaction repo.Create failed", zap.Error(err))
-		return structs.PaymeCreateResult{}, rpcErr(-32400, "Внутренняя ошибка", "Ichki xato", "Internal error", nil)
+		return structs.PaymeCreateResult{}, rpcErr(
+			-32400,
+			"Внутренняя ошибка",
+			"Ichki xato",
+			"Internal error",
+			nil,
+		)
 	}
 
 	return structs.PaymeCreateResult{

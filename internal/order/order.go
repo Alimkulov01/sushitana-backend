@@ -72,6 +72,18 @@ func New(p Params) Service {
 	}
 }
 func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, error) {
+	if req.DeliveryType == "PICKUP" && req.Address == nil {
+		req.Address = &structs.Address{
+			Lat:        0,
+			Lng:        0,
+			Name:       "",
+			DistanceKm: 0,
+		}
+	}
+
+	if req.DeliveryType == "DELIVERY" && req.Address == nil {
+		return "", fmt.Errorf("address is required for delivery")
+	}
 	id, err := s.orderRepo.Create(ctx, req)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {

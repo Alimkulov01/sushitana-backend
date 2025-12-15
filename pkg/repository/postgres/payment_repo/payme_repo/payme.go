@@ -145,21 +145,11 @@ func (r repo) GetByPaycomTransactionID(ctx context.Context, paycomTransID string
 
 func (r repo) GetActiveByOrderID(ctx context.Context, orderID string) (structs.PaymeTransaction, error) {
 	query := `
-		SELECT
-			id, 
-			paycom_transaction_id, 
-			order_id, 
-			amount::text, 
-			state, 
-			created_time,
-			perform_time, 
-			cancel_time, 
-			reason, 
-			created_at, 
-			updated_at
+		SELECT id, paycom_transaction_id, order_id, amount::text, state,
+			   created_time, perform_time, cancel_time, reason, created_at, updated_at
 		FROM payme_transactions
-		WHERE order_id = $1 AND state = $2
-		ORDER BY created_at DESC
+		WHERE order_id = $1 AND state > 0
+		ORDER BY created_time DESC
 		LIMIT 1
 	`
 
