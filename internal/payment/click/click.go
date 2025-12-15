@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"sushitana/pkg/logger"
 	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
 
+	"github.com/spf13/cast"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -148,12 +150,16 @@ func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareReque
 		}, nil
 	}
 
-	if inv.Amount != req.Amount {
+	reqAmt := math.Round(cast.ToFloat64(req.Amount)*100) / 100
+	invAmt := math.Round(cast.ToFloat64(inv.Amount)*100) / 100
+
+	if reqAmt != invAmt {
 		return structs.ClickPrepareResponse{
-			ClickTransId:    req.ClickTransId,
-			MerchantTransId: req.MerchantTransId,
-			Error:           -2,
-			ErrorNote:       "The total payment value is not equal.",
+			ClickTransId:      req.ClickTransId,
+			MerchantTransId:   req.MerchantTransId,
+			MerchantPrepareId: inv.MerchantPrepareID,
+			Error:             -2,
+			ErrorNote:         "Incorrect amount",
 		}, nil
 	}
 	mpid, err := s.clickrepo.UpsertPrepare(ctx, req.MerchantTransId, req.ClickTransId, req.ClickPaydocId, req.Amount)
