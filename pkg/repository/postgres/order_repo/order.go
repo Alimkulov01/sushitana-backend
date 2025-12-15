@@ -34,6 +34,7 @@ type (
 		GetList(ctx context.Context, req structs.GetListOrderRequest) (structs.GetListOrderResponse, error)
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
+		AddLink(ctx context.Context, link, order_id string) error
 		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
 		UpdateClickInfo(ctx context.Context, orderID, requestID, transactionParam string) error
 	}
@@ -307,6 +308,7 @@ func (r repo) GetByMerchantTransId(ctx context.Context, id string) (resp structs
 			o.items,
 			o.delivery_price,
 			o.order_number,
+			o.payment_url,
 			o.created_at,
 			o.updated_at
 		FROM orders as o
@@ -329,6 +331,7 @@ func (r repo) GetByMerchantTransId(ctx context.Context, id string) (resp structs
 		&order.Products,
 		&order.DeliveryPrice,
 		&order.OrderNumber,
+		&order.PaymentUrl,
 		&order.CreatedAt,
 		&order.UpdateAt,
 	); err != nil {
@@ -379,6 +382,7 @@ func (r repo) GetByOrderNumber(ctx context.Context, number int64) (resp structs.
 			o.items,
 			o.delivery_price,
 			o.order_number,
+			o.payment_url,
 			o.created_at,
 			o.updated_at
 		FROM orders as o
@@ -401,6 +405,7 @@ func (r repo) GetByOrderNumber(ctx context.Context, number int64) (resp structs.
 		&order.Products,
 		&order.DeliveryPrice,
 		&order.OrderNumber,
+		&order.PaymentUrl,
 		&order.CreatedAt,
 		&order.UpdateAt,
 	); err != nil {
@@ -452,6 +457,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			o.items,
 			o.delivery_price,
 			o.order_number,
+			o.payment_url,
 			o.created_at,
 			o.updated_at,
 			c.phone
@@ -542,6 +548,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			&itemsBytes,
 			&order.DeliveryPrice,
 			&order.OrderNumber,
+			&order.PaymentUrl,
 			&order.CreatedAt,
 			&order.UpdateAt,
 			&order.Phone,
@@ -574,7 +581,9 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 
 		order.TotalCount = itemCount
 		order.TotalPrice = orderTotal + order.DeliveryPrice
-
+		if order.PaymentStatus == "PAID" {
+			order.PaymentUrl = ""
+		}
 		resp.Orders = append(resp.Orders, order)
 	}
 
@@ -664,5 +673,17 @@ func (r repo) UpdateClickInfo(ctx context.Context, orderID, requestID, transacti
         WHERE id = $3
     `
 	_, err := r.db.Exec(ctx, query, requestID, transactionParam, orderID)
+	return err
+}
+
+func (r repo) AddLink(ctx context.Context, link, order_id string) error {
+	query := `
+        UPDATE orders
+        SET 
+            payment_url = $1,
+            updated_at = NOW()
+        WHERE id = $2
+    `
+	_, err := r.db.Exec(ctx, query, link, order_id)
 	return err
 }

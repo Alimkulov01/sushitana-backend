@@ -74,6 +74,7 @@ type Order struct {
 	TotalPrice     int64          `json:"totalPrice"`
 	OrderNumber    int64          `json:"order_number"`
 	Phone          string         `json:"phone,omitempty"`
+	PaymentUrl     string         `json:"payment_url"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	UpdateAt       time.Time      `json:"updateAt"`
 }

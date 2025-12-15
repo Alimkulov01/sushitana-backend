@@ -159,12 +159,12 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		serviceId := os.Getenv("CLICK_SERVICE_ID")
 		merchantId := os.Getenv("CLICK_MERCHANT_ID")
 		if serviceId == "" || merchantId == "" {
-			return "", fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env yo‘q")
+			return "", fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
 		}
 
 		merchantTransID := cast.ToString(ord.Order.OrderNumber)
 
-		amountInt := 1000
+		amountInt := ord.Order.TotalPrice
 		amount := float64(amountInt)
 
 		_, err := s.clickSvc.CheckoutPrepare(ctx, structs.CheckoutPrepareRequest{
@@ -172,7 +172,6 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			MerchantID:       merchantId,
 			TransactionParam: merchantTransID,
 			Amount:           amount,
-			ReturnUrl:        "order",
 			Description:      fmt.Sprintf("Order #%s", merchantTransID),
 		})
 		if err != nil {
@@ -194,6 +193,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		}
 
 		payURL = BuildClickPayURL(cast.ToInt64(serviceId), merchantId, int64(amountInt), merchantTransID, "")
+		_ = s.orderRepo.AddLink(ctx, payURL, ord.Order.ID)
 		return payURL, nil
 
 	case "PAYME":
@@ -201,7 +201,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 		merchantID := os.Getenv("PAYME_KASSA_ID")
 		if merchantID == "" {
-			return "", fmt.Errorf("PAYME_KASSA_ID env yo‘q")
+			return "", fmt.Errorf("PAYME_KASSA_ID env not found")
 		}
 
 		amountTiyin := int64(1000 * 100)
