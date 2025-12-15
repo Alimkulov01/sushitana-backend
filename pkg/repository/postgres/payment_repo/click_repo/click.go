@@ -30,6 +30,7 @@ type (
 		GetByInvoiceID(ctx context.Context, clickInvoiceID int64) (structs.Invoice, error)
 		GetByClickTransID(ctx context.Context, clickTransID int64) (structs.Invoice, error)
 		GetByPrepareID(ctx context.Context, merchantPrepareID int64) (structs.Invoice, error)
+		UpdateOnPrepare(ctx context.Context, merchantTransID string, clickTransID, clickPaydocID int64) error
 
 		UpsertPrepare(ctx context.Context, merchantTransID string, clickTransID, clickPaydocID int64, amount string) (merchantPrepareID int64, err error)
 		UpdateOnComplete(ctx context.Context, merchantTransID string, merchantPrepareID int64, clickTransID int64, status string) (invoiceID string, orderID sql.NullString, err error)
@@ -365,4 +366,16 @@ func (r repo) GetByPrepareID(ctx context.Context, merchantPrepareID int64) (stru
 	}
 
 	return resp, nil
+}
+
+func (r repo) UpdateOnPrepare(ctx context.Context, merchantTransID string, clickTransID, clickPaydocID int64) error {
+	q := `
+        UPDATE invoices
+        SET click_trans_id = $2,
+            click_paydoc_id = $3,
+            updated_at = NOW()
+        WHERE merchant_trans_id = $1
+    `
+	_, err := r.db.Exec(ctx, q, merchantTransID, clickTransID, clickPaydocID)
+	return err
 }
