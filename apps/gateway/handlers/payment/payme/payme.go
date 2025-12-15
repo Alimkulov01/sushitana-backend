@@ -79,7 +79,7 @@ func unauthorized(c *gin.Context) {
 }
 
 func checkPaymeAuth(c *gin.Context) bool {
-	key := os.Getenv("PAYME_SECRET_KEY")
+	key := os.Getenv("PAYME_SECRET_TEST_KEY")
 	if key == "" {
 		return false
 	}
@@ -121,14 +121,14 @@ func (h *handler) Handle(c *gin.Context) {
 	var req rpcReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, nil, structs.RPCError{
-			Code: -32700, 
+			Code:    -32700,
 			Message: "Parse error",
 		})
 		return
 	}
 	if req.JSONRPC != "2.0" || req.Method == "" {
 		fail(c, req.ID, structs.RPCError{
-			Code: -32600, 
+			Code:    -32600,
 			Message: "Invalid Request",
 		})
 		return
@@ -142,7 +142,7 @@ func (h *handler) Handle(c *gin.Context) {
 		var p structs.PaymeCheckPerformParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			fail(c, req.ID, structs.RPCError{
-				Code: -32600, 
+				Code:    -32600,
 				Message: "Invalid params",
 			})
 			return
@@ -158,7 +158,7 @@ func (h *handler) Handle(c *gin.Context) {
 		var p structs.PaymeCreateParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			fail(c, req.ID, structs.RPCError{
-				Code: -32600, 
+				Code:    -32600,
 				Message: "Invalid params",
 			})
 			return
@@ -174,7 +174,7 @@ func (h *handler) Handle(c *gin.Context) {
 		var p structs.PaymePerformParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			fail(c, req.ID, structs.RPCError{
-				Code: -32600, 
+				Code:    -32600,
 				Message: "Invalid params",
 			})
 			return
@@ -190,7 +190,7 @@ func (h *handler) Handle(c *gin.Context) {
 		var p structs.PaymeCancelParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			fail(c, req.ID, structs.RPCError{
-				Code: -32600, 
+				Code:    -32600,
 				Message: "Invalid params",
 			})
 			return
@@ -206,7 +206,7 @@ func (h *handler) Handle(c *gin.Context) {
 		var p structs.PaymeCheckParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			fail(c, req.ID, structs.RPCError{
-				Code: -32600, 
+				Code:    -32600,
 				Message: "Invalid params",
 			})
 			return
@@ -222,7 +222,7 @@ func (h *handler) Handle(c *gin.Context) {
 		var p structs.PaymeStatementParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			fail(c, req.ID, structs.RPCError{
-				Code: -32600, 
+				Code:    -32600,
 				Message: "Invalid params",
 			})
 			return
@@ -236,9 +236,9 @@ func (h *handler) Handle(c *gin.Context) {
 
 	default:
 		fail(c, req.ID, structs.RPCError{
-			Code: -32601, 
-			Message: "Method not found", 
-			Data: req.Method,
+			Code:    -32601,
+			Message: "Method not found",
+			Data:    req.Method,
 		})
 	}
 }
