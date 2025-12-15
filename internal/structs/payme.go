@@ -73,12 +73,12 @@ type PaymeCheckParams struct {
 }
 
 type PaymeCheckResult struct {
+	Transaction string `json:"transaction"`
+	State       int    `json:"state"`
 	CreateTime  int64  `json:"create_time"`
 	PerformTime int64  `json:"perform_time"`
 	CancelTime  int64  `json:"cancel_time"`
-	Transaction string `json:"transaction"`
-	State       int    `json:"state"`
-	Reason      int    `json:"reason"`
+	Reason      *int   `json:"reason"` // nil => null
 }
 
 type PaymeStatementParams struct {
@@ -100,5 +100,5 @@ type Transaction struct {
 	CancelTime  int64   `json:"cancel_time"`
 	Transaction string  `json:"transaction"`
 	State       int     `json:"state"`
-	Reason      int     `json:"reason"`
+	Reason *int `json:"reason"`
 }

@@ -9,9 +9,15 @@ const (
 	ErrInternal       = -32400
 )
 
+type PaymeMessage struct {
+	Ru string `json:"ru"`
+	Uz string `json:"uz"`
+	En string `json:"en"`
+}
+
 type RPCError struct {
 	Code    int         `json:"code"`
-	Message string      `json:"message"`
+	Message interface{} `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
 
