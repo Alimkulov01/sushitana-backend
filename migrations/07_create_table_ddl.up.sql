@@ -5,7 +5,6 @@ CREATE TYPE order_status AS ENUM (
     'WAITING_OPERATOR',
     'WAITING_PAYMENT',
     'REJECTED',
-    'SENT_TO_IIKO',
     'COOKING',
     'READY_FOR_PICKUP',
     'ON_THE_WAY',

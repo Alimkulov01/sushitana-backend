@@ -295,7 +295,7 @@ func (h *handler) Complete(c *gin.Context) {
 			}
 			err = h.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 				OrderId: inv.OrderID.String,
-				Status:  "WAITING_OPERATOR",
+				Status:  "COOKING",
 			})
 			if err != nil {
 				h.logger.Error(ctx, "order status update failed", zap.Error(err))
