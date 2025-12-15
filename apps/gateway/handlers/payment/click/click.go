@@ -293,7 +293,14 @@ func (h *handler) Complete(c *gin.Context) {
 				OrderId: inv.OrderID.String,
 				Status:  orderStatus,
 			}); ue != nil {
-				h.logger.Error(ctx, "order status update failed", zap.Error(ue))
+				h.logger.Error(ctx, "order payment status update failed", zap.Error(ue))
+			}
+			err = h.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+				OrderId: inv.OrderID.String,
+				Status:  "WAITING_OPERATOR",
+			})
+			if err != nil {
+				h.logger.Error(ctx, "order status update failed", zap.Error(err))
 			}
 		}
 	}
@@ -336,10 +343,7 @@ func (h *handler) CheckInvoice(c *gin.Context) {
 				OrderId: inv.OrderID.String,
 				Status:  "PAID",
 			})
-			_ = h.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-				OrderId: inv.OrderID.String,
-				Status:  "WAITING_OPERATOR",
-			})
+
 		}
 	}
 
