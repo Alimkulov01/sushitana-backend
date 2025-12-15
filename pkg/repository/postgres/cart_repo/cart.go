@@ -150,6 +150,7 @@ func (r repo) Patch(ctx context.Context, req structs.PatchCart) (int64, error) {
 }
 
 func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error) {
+	fmt.Println(tgID)
 	r.logger.Info(ctx, "Get cart by tgID", zap.Int64("tgid", tgID))
 	var (
 		cart structs.CartInfo

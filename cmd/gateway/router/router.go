@@ -63,10 +63,10 @@ func NewRouter(params Params) {
 	out := r.Group(baseUrl)
 	out.Use(params.Ctx(), gin.Logger(), gin.Recovery())
 	permissionMiddleware := middleware.EndpointPermissionMiddleware(params.Middleware)
-	iikoGroup := out.Group("/iiko")
-	{
-		iikoGroup.POST("/access-token", params.Iiko.GetIikoAccessToken)
-	}
+	// iikoGroup := out.Group("/iiko")
+	// {
+	// 	iikoGroup.POST("/access-token", params.Iiko.GetIikoAccessToken)
+	// }
 
 	adminGroup := out.Group("/admin")
 	{
@@ -167,6 +167,8 @@ func NewRouter(params Params) {
 		courierGroup.GET("/", params.Order.GetListOrder)
 		courierGroup.PUT("/", params.Order.UpdateStatusOrder)
 	}
+	//iiko webhook
+	out.POST("/webhooks/iiko/:secret", params.Iiko.DeliveryOrderUpdate)
 
 	server := http.Server{
 		Addr: params.Config.GetString("server.port"),

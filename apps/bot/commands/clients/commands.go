@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"sushitana/apps/bot/commands/category"
+	"sushitana/internal/cart"
 	"sushitana/internal/client"
 	"sushitana/internal/keyboards"
 	"sushitana/internal/structs"
@@ -27,12 +28,14 @@ type Params struct {
 	Logger      logger.Logger
 	ClientSvc   client.Service
 	CategoryCmd category.Commands
+	CartSvc     cart.Service
 }
 
 type Commands struct {
 	logger      logger.Logger
 	ClientSvc   client.Service
 	CategoryCmd category.Commands
+	CartSvc     cart.Service
 }
 
 func New(p Params) Commands {
@@ -40,6 +43,7 @@ func New(p Params) Commands {
 		logger:      p.Logger,
 		ClientSvc:   p.ClientSvc,
 		CategoryCmd: p.CategoryCmd,
+		CartSvc:     p.CartSvc,
 	}
 }
 
@@ -360,10 +364,22 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	}
 	lang := account.Language
 
-	keyboard := tgbotapi.NewReplyKeyboard(
+	cartTotal := c.getCartTotalCount(ctx, account.TgID)
+
+	rows := [][]tgbotapi.KeyboardButton{
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.MenuButton)),
 		),
+	}
+
+	if cartTotal > 0 {
+		btnText := texts.Get(lang, texts.Cart)
+		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton(btnText),
+		))
+	}
+
+	rows = append(rows,
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.FeedbackButton)),
 		),
@@ -375,6 +391,7 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
+	keyboard := tgbotapi.NewReplyKeyboard(rows...)
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
 
@@ -399,4 +416,19 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	)
 
 	_, _ = ctx.Bot().Send(msgUrl)
+}
+
+func (c *Commands) getCartTotalCount(ctx *tgrouter.Ctx, tgID int64) int64 {
+
+	items, err := c.CartSvc.GetByUserTgID(ctx.Context, tgID)
+	if err != nil {
+		c.logger.Error(ctx.Context, "failed to get cart list", zap.Error(err))
+		return 0
+	}
+
+	var total int64
+	for _, it := range items.Cart.Products {
+		total += it.Count
+	}
+	return total
 }

@@ -158,7 +158,6 @@ func expectedAmountTiyinFromOrderTotal(total any) int64 {
 	}
 }
 
-
 func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCheckPerformParams) (structs.PaymeCheckPerformResult, structs.RPCError) {
 	orderID, ok := parseOrderID(p.Account)
 	if !ok {
@@ -311,10 +310,10 @@ func (s *service) PerformTransaction(ctx context.Context, p structs.PaymePerform
 	tx, err := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
 	if err != nil {
 		return structs.PaymePerformResult{}, rpcErr(
-			-31003, 
-			"Транзакция не найдена", 
-			"Tranzaksiya topilmadi", 
-			"Transaction not found", 
+			-31003,
+			"Транзакция не найдена",
+			"Tranzaksiya topilmadi",
+			"Transaction not found",
 			"transaction")
 	}
 
@@ -328,10 +327,10 @@ func (s *service) PerformTransaction(ctx context.Context, p structs.PaymePerform
 
 	if tx.State < 0 {
 		return structs.PaymePerformResult{}, rpcErr(
-			-31008, 
-			"Транзакция отменена", 
-			"Tranzaksiya bekor qilingan", 
-			"Transaction canceled", 
+			-31008,
+			"Транзакция отменена",
+			"Tranzaksiya bekor qilingan",
+			"Transaction canceled",
 			"state")
 	}
 
@@ -357,10 +356,10 @@ func (s *service) CancelTransaction(ctx context.Context, p structs.PaymeCancelPa
 	tx, err := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
 	if err != nil {
 		return structs.PaymeCancelResult{}, rpcErr(
-			-31003, 
-			"Транзакция не найдена", 
-			"Tranzaksiya topilmadi", 
-			"Transaction not found", 
+			-31003,
+			"Транзакция не найдена",
+			"Tranzaksiya topilmadi",
+			"Transaction not found",
 			"transaction")
 	}
 
@@ -379,9 +378,9 @@ func (s *service) CancelTransaction(ctx context.Context, p structs.PaymeCancelPa
 	if tx.State != paymerepo.StateCreated && tx.State != paymerepo.StatePerformed {
 		return structs.PaymeCancelResult{}, rpcErr(
 			-32400,
-			"Неверное состояние", 
-			"Noto‘g‘ri holat", 
-			"Invalid transaction state", 
+			"Неверное состояние",
+			"Noto‘g‘ri holat",
+			"Invalid transaction state",
 			"state")
 	}
 
@@ -399,10 +398,10 @@ func (s *service) CancelTransaction(ctx context.Context, p structs.PaymeCancelPa
 	if err != nil {
 		s.logger.Error(ctx, "payme MarkCanceled failed", zap.Error(err))
 		return structs.PaymeCancelResult{}, rpcErr(
-			-32400, 
-			"Внутренняя ошибка", 
-			"Ichki xato", 
-			"Internal error", 
+			-32400,
+			"Внутренняя ошибка",
+			"Ichki xato",
+			"Internal error",
 			nil)
 	}
 
@@ -464,10 +463,10 @@ func (s *service) GetStatement(ctx context.Context, p structs.PaymeStatementPara
 	if err != nil {
 		s.logger.Error(ctx, "payme GetStatement failed", zap.Error(err))
 		return structs.PaymeStatementResult{}, rpcErr(
-			-32400, 
-			"Внутренняя ошибка", 
-			"Ichki xato", 
-			"Internal error", 
+			-32400,
+			"Внутренняя ошибка",
+			"Ichki xato",
+			"Internal error",
 			nil)
 	}
 
@@ -476,10 +475,10 @@ func (s *service) GetStatement(ctx context.Context, p structs.PaymeStatementPara
 		amountTiyin, e := somStringToTiyin(tx.Amount)
 		if e != nil {
 			return structs.PaymeStatementResult{}, rpcErr(
-				-32400, 
-				"Внутренняя ошибка", 
-				"Ichki xato", 
-				"Internal error", 
+				-32400,
+				"Внутренняя ошибка",
+				"Ichki xato",
+				"Internal error",
 				nil)
 		}
 

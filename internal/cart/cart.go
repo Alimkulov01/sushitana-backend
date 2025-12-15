@@ -83,14 +83,13 @@ func (s *service) Patch(ctx context.Context, req structs.PatchCart) (int64, erro
 }
 
 func (s *service) GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error) {
-	{
-		cart, err := s.cartRepo.GetByUserTgID(ctx, tgID)
-		if err != nil {
-			s.logger.Error(ctx, "->cartRepo.GetByTgID", zap.Error(err))
-			return structs.GetCartByTgID{}, err
-		}
-		return cart, nil
+
+	cart, err := s.cartRepo.GetByUserTgID(ctx, tgID)
+	if err != nil {
+		s.logger.Error(ctx, "->cartRepo.GetByTgID", zap.Error(err))
+		return structs.GetCartByTgID{}, err
 	}
+	return cart, nil
 }
 
 func (s *service) GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error) {

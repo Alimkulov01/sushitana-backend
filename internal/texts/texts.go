@@ -28,6 +28,8 @@ const (
 	AddToCart             TextKey = "add_to_cart"
 	SelectAmount          TextKey = "select_amount"
 	CurrencySymbol        TextKey = "currency_symbol"
+	AddedToCart           TextKey = "added_to_cart"
+	Cart                  TextKey = "cart"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -172,6 +174,11 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "So'm",
 		RU: "Сум",
 		EN: "UZS",
+	},
+	Cart: {
+		UZ: "🛒 Savatcha",
+		RU: "🛒 Корзина",
+		EN: "🛒 Cart",
 	},
 }
 

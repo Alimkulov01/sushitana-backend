@@ -1,6 +1,61 @@
 package structs
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+const (
+	DeliveryTypeDelivery = "DELIVERY"
+	DeliveryTypePickup   = "PICKUP"
+
+	PaymentMethodCash  = "CASH"
+	PaymentMethodClick = "CLICK"
+	PaymentMethodPayme = "PAYME"
+)
+
+func NormalizeDeliveryType(v string) (string, error) {
+	s := strings.TrimSpace(strings.ToUpper(v))
+	switch s {
+	case "DELIVERY":
+		return "DELIVERY", nil
+	case "PICKUP":
+		return "PICKUP", nil
+	default:
+		return "", fmt.Errorf("invalid deliveryType: %q", v)
+	}
+}
+
+func NormalizePaymentMethod(v string) (string, error) {
+	s := strings.TrimSpace(strings.ToUpper(v))
+	switch s {
+	case "CASH":
+		return "CASH", nil
+	case "PAYME":
+		return "PAYME", nil
+	case "CLICK":
+		return "CLICK", nil
+	default:
+		return "", fmt.Errorf("invalid paymentMethod: %q", v)
+	}
+}
+
+func ToIikoPaymentKind(method string) (string, error) {
+	m, err := NormalizePaymentMethod(method)
+	if err != nil {
+		return "", err
+	}
+	if m == PaymentMethodCash {
+		return IikoPaymentKindCash, nil
+	}
+	return IikoPaymentKindOnline, nil
+}
+
+const (
+	IikoPaymentKindCash   = "CASH"
+	IikoPaymentKindOnline = "ONLINE"
+)
 
 type Order struct {
 	ID             string         `json:"id"`

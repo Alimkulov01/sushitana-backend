@@ -3,6 +3,7 @@ package category
 import (
 	"strings"
 	"sushitana/apps/bot/commands/product"
+	"sushitana/internal/cart"
 	"sushitana/internal/category"
 	"sushitana/internal/structs"
 	"sushitana/internal/texts"
@@ -23,12 +24,14 @@ type Params struct {
 	Logger      logger.Logger
 	CategorySvc category.Service
 	ProductCmd  product.Commands
+	CartSvc     cart.Service
 }
 
 type Commands struct {
 	logger      logger.Logger
 	CategorySvc category.Service
 	ProductCmd  product.Commands
+	CartSvc     cart.Service
 }
 
 func New(p Params) Commands {
@@ -36,6 +39,7 @@ func New(p Params) Commands {
 		logger:      p.Logger,
 		CategorySvc: p.CategorySvc,
 		ProductCmd:  p.ProductCmd,
+		CartSvc:     p.CartSvc,
 	}
 }
 
@@ -104,16 +108,30 @@ func getCategoryNameByLang(lang utils.Lang, name structs.Name) string {
 
 func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
-	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")
 		return
 	}
 	lang := account.Language
-	keyboard := tgbotapi.NewReplyKeyboard(
+
+	cartTotal := c.getCartTotalCount(ctx, account.TgID)
+
+	rows := [][]tgbotapi.KeyboardButton{
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.MenuButton)),
 		),
+	}
+
+	if cartTotal > 0 {
+		btnText := texts.Get(lang, texts.Cart)
+		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton(btnText),
+		))
+	}
+
+	rows = append(rows,
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.FeedbackButton)),
 		),
@@ -125,6 +143,7 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
+	keyboard := tgbotapi.NewReplyKeyboard(rows...)
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
 
@@ -149,4 +168,19 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	)
 
 	_, _ = ctx.Bot().Send(msgUrl)
+}
+
+func (c *Commands) getCartTotalCount(ctx *tgrouter.Ctx, tgID int64) int64 {
+
+	items, err := c.CartSvc.GetByUserTgID(ctx.Context, tgID)
+	if err != nil {
+		c.logger.Error(ctx.Context, "failed to get cart list", zap.Error(err))
+		return 0
+	}
+
+	var total int64
+	for _, it := range items.Cart.Products {
+		total += it.Count
+	}
+	return total
 }

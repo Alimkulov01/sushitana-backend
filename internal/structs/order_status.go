@@ -11,14 +11,3 @@ const (
 	OrderStatusCancelled       = "CANCELLED"
 	OrderStatusRejected        = "REJECTED"
 )
-
-const (
-	DeliveryTypeDelivery = "DELIVERY" // delivery
-	DeliveryTypePickup   = "PICKUP"   // pickup
-)
-
-const (
-	PaymentMethodCash  = "CASH"
-	PaymentMethodPayme = "PAYME"
-	PaymentMethodClick = "CLICK"
-)

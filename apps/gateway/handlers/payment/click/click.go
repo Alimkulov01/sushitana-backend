@@ -2,7 +2,6 @@ package click
 
 import (
 	"bytes"
-	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -302,9 +301,6 @@ func (h *handler) Complete(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// Optional: if you want to reuse ctx in helpers later.
-func _ctx(_ context.Context) {}
-
 func (h *handler) CheckInvoice(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -327,8 +323,6 @@ func (h *handler) CheckInvoice(c *gin.Context) {
 		return
 	}
 
-	// NOTE: invoice_status mappingni siz 1 marta log qilib aniq qilib olasiz.
-	// Hozircha note ichidan tekshiramiz (ishlab turadi).
 	note := strings.ToLower(st.InvoiceStatusNote)
 	paid := strings.Contains(note, "success") ||
 		strings.Contains(note, "paid") ||

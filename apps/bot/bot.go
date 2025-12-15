@@ -74,7 +74,12 @@ func NewBot(p Params) error {
 		data := ctx.Update().CallbackQuery.Data
 
 		switch {
-		case strings.HasPrefix(data, "back_to_menu"):
+		case strings.HasPrefix(data, "back_to_menu:"),
+			strings.HasPrefix(data, "qty_inc:"),
+			strings.HasPrefix(data, "qty_dec:"),
+			strings.HasPrefix(data, "add_to_cart:"),
+			strings.HasPrefix(data, "noop:"),
+			data == "noop":
 			p.ProductCmd.Callback(ctx)
 		}
 	})
