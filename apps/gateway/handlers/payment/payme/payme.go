@@ -79,7 +79,7 @@ func unauthorized(c *gin.Context) {
 }
 
 func checkPaymeAuth(c *gin.Context) bool {
-	key := os.Getenv("PAYME_SECRET_TEST_KEY")
+	key := os.Getenv("PAYME_SECRET_KEY")
 	if key == "" {
 		return false
 	}
