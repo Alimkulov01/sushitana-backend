@@ -2,10 +2,10 @@ package clients
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"sushitana/apps/bot/commands/category"
+	productcmd "sushitana/apps/bot/commands/product"
 	"sushitana/internal/cart"
 	"sushitana/internal/client"
 	"sushitana/internal/keyboards"
@@ -28,6 +28,7 @@ type Params struct {
 	Logger      logger.Logger
 	ClientSvc   client.Service
 	CategoryCmd category.Commands
+	ProductCmd  productcmd.Commands
 	CartSvc     cart.Service
 }
 
@@ -35,6 +36,7 @@ type Commands struct {
 	logger      logger.Logger
 	ClientSvc   client.Service
 	CategoryCmd category.Commands
+	ProductCmd  productcmd.Commands
 	CartSvc     cart.Service
 }
 
@@ -44,6 +46,7 @@ func New(p Params) Commands {
 		ClientSvc:   p.ClientSvc,
 		CategoryCmd: p.CategoryCmd,
 		CartSvc:     p.CartSvc,
+		ProductCmd:  p.ProductCmd,
 	}
 }
 
@@ -235,11 +238,12 @@ func (c *Commands) MainMenuHandler(ctx *tgrouter.Ctx) {
 	case texts.Get(lang, texts.ContactButton):
 		_ = ctx.UpdateState("contact", nil)
 		c.Contact(ctx)
-
 	case texts.Get(lang, texts.MenuButton):
 		_ = ctx.UpdateState("show_category", map[string]string{"last_action": "show_main_menu"})
 		c.CategoryCmd.MenuCategoryHandler(ctx)
-
+	case texts.Get(lang, texts.Cart):
+		_ = ctx.UpdateState("show_cart", map[string]string{"last_action": "show_main_menu"})
+		c.ProductCmd.GetCartInfo(ctx)
 	default:
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))
 	}
@@ -256,7 +260,6 @@ func (c *Commands) ChangeLanguageInfo(ctx *tgrouter.Ctx) {
 	lang := account.Language
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Language))
-	fmt.Println(msg)
 	msg.ReplyMarkup = keyboards.LanguageKeyboard(lang)
 
 	if _, err := ctx.Bot().Send(msg); err != nil {
@@ -431,4 +434,40 @@ func (c *Commands) getCartTotalCount(ctx *tgrouter.Ctx, tgID int64) int64 {
 		total += it.Count
 	}
 	return total
+}
+
+func (c *Commands) CartMenuHandler(ctx *tgrouter.Ctx) {
+	if ctx.Update().Message == nil {
+		return
+	}
+	chatID := ctx.Update().Message.Chat.ID
+	text := strings.TrimSpace(ctx.Update().Message.Text)
+
+	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+	if account == nil {
+		return
+	}
+	lang := account.Language
+
+	back := texts.Get(lang, texts.BackButton)
+	clear := texts.Get(lang, texts.CartClear)
+	confirm := texts.Get(lang, texts.CartConfirm)
+	switch text {
+	case back:
+		_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "cart_back"})
+		c.ShowMainMenu(ctx)
+		return
+	case clear:
+		_ = c.CartSvc.Clear(ctx.Context, account.TgID)
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "🧹 OK"))
+		c.ProductCmd.GetCartInfo(ctx)
+		return
+	case confirm:
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, confirm))
+		return
+
+	default:
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Выберите действие с клавиатуры ниже."))
+		return
+	}
 }

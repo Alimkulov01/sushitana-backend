@@ -65,6 +65,7 @@ func NewBot(p Params) error {
 	tgrouter.On(bot, tgrouter.State("waiting_change_language"), p.ClientsCmd.ChangeLanguage)
 	tgrouter.On(bot, tgrouter.State("waiting_for_name"), p.ClientsCmd.SaveName)
 	tgrouter.On(bot, tgrouter.State("waiting_for_phone"), p.ClientsCmd.ChangePhone)
+	tgrouter.On(bot, tgrouter.State("get_cart"), p.ProductCmd.GetCartInfoHandler)
 	// //product
 	tgrouter.On(bot, tgrouter.State("category_selected"), p.ProductCmd.CategoryByProductMenu)
 	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfoHandler)
@@ -78,6 +79,12 @@ func NewBot(p Params) error {
 			strings.HasPrefix(data, "qty_inc:"),
 			strings.HasPrefix(data, "qty_dec:"),
 			strings.HasPrefix(data, "add_to_cart:"),
+			strings.HasPrefix(data, "open_cart:"),
+			strings.HasPrefix(data, "cart_inc:"),
+			strings.HasPrefix(data, "cart_dec:"),
+			strings.HasPrefix(data, "cart_del:"),
+			strings.HasPrefix(data, "cart_clear:"),
+			strings.HasPrefix(data, "cart_back:"),
 			strings.HasPrefix(data, "noop:"),
 			data == "noop":
 			p.ProductCmd.Callback(ctx)

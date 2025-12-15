@@ -30,6 +30,11 @@ const (
 	CurrencySymbol        TextKey = "currency_symbol"
 	AddedToCart           TextKey = "added_to_cart"
 	Cart                  TextKey = "cart"
+	CartInfoMsg           TextKey = "cart_info_msg"
+	CartClear             TextKey = "cart_clear"
+	CartTotal             TextKey = "cart_total"
+	CartConfirm           TextKey = "cart_confirm"
+	CartEmpty             TextKey = "cart_empty"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -179,6 +184,48 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "🛒 Savatcha",
 		RU: "🛒 Корзина",
 		EN: "🛒 Cart",
+	},
+	CartInfoMsg: {
+		UZ: `❌ Mahsulot nomi - savatdan olib tashlash
+
+➖ va ➕ - miqdorni kamaytirish yoki oshirish
+
+🔄 Savatni tozalash`,
+		RU: `❌ Название товара - удалить из корзины
+
+➖ и ➕ уменьшить или увеличить количество товара
+
+🔄 Очистить корзину`,
+		EN: `❌ Item name - remove from cart
+
+➖ and ➕ - decrease or increase the quantity of the item
+
+🔄 Clear cart`,
+	},
+	CartClear: {
+		UZ: "🔄 Savatchani tozalash",
+		RU: "🔄 Очистить корзину",
+		EN: "🔄 Clear cart",
+	},
+	CartTotal: {
+		UZ: "Jami",
+		RU: "Итого",
+		EN: "Total",
+	},
+	CartConfirm: {
+		UZ: "✅ Tasdiqlash!",
+		RU: "✅ Подтвердить!",
+		EN: "✅ Confirm!",
+	},
+	CartEmpty: {
+		UZ: "🛒 Savatcha bo‘sh",
+		RU: "🛒 Корзина пуста",
+		EN: "🛒 Cart is empty",
+	},
+	AddedToCart: {
+		UZ: "Savatga qo‘shildi",
+		RU: "Добавлено в корзину",
+		EN: "Added to cart",
 	},
 }
 
