@@ -83,7 +83,7 @@ func NewRouter(params Params) {
 	{
 		out.POST("/payments/click/complete", params.Click.Complete)
 		out.POST("/payments/click/prepare", params.Click.Prepare)
-		out.POST("/payments/payme", params.Payme.Handle)
+		r.POST("/payments/payme", params.Payme.Handle)
 	}
 	clientGroup := api.Group("/client")
 	{

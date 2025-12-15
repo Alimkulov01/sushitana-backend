@@ -32,6 +32,7 @@ type (
 
 	Service interface {
 		GetIikoAccessToken(ctx context.Context) (resp structs.IikoClientTokenResponse, err error)
+		CreateOrder(ctx context.Context, req structs.CreateOrder) (structs.IikoDeliveryCreateResponse, error)
 		GetCategory(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetCategoryResponse, error)
 		GetProduct(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetProductResponse, error)
 		UpdateIIKO(ctx context.Context, id int64, token string) (int64, error)
@@ -404,4 +405,127 @@ func (s *service) EnsureValidIikoToken(ctx context.Context) (string, error) {
 	}
 
 	return token, nil
+}
+
+func (s *service) CreateOrder(ctx context.Context, req structs.CreateOrder) (structs.IikoDeliveryCreateResponse, error) {
+	var result structs.IikoDeliveryCreateResponse
+
+	token, err := s.EnsureValidIikoToken(ctx)
+	if err != nil {
+		return result, fmt.Errorf("EnsureValidIikoToken: %w", err)
+	}
+	organizationID := os.Getenv("IIKO_ORGANIZATION_ID")
+	if organizationID == "" {
+		return result, fmt.Errorf("IIKO_ORGANIZATION_ID is empty")
+	}
+
+	var deliveryOrderTypeID, pickupOrderTypeID string
+	deliveryOrderTypeID = os.Getenv("IIKO_DELIVERY_ORDER_TYPE_ID")
+	pickupOrderTypeID = os.Getenv("IIKO_PICKUP_ORDER_TYPE_ID")
+
+	paymentCashID := os.Getenv("IIKO_PAYMENT_CASH_ID")
+	paymentOnlineID := os.Getenv("IIKO_PAYMENT_ONLINE_ID")
+
+	var orderTypeID string
+	switch req.DeliveryType {
+	case "delivery":
+		orderTypeID = deliveryOrderTypeID
+	case "pickup":
+		orderTypeID = pickupOrderTypeID
+	default:
+		return result, fmt.Errorf("unknown DeliveryType: %s", req.DeliveryType)
+	}
+
+	var paymentTypeID string
+	switch req.PaymentMethod {
+	case "cash":
+		paymentTypeID = paymentCashID
+	case "online":
+		paymentTypeID = paymentOnlineID
+	default:
+		return result, fmt.Errorf("unknown paymentMethod: %s", req.PaymentMethod)
+	}
+
+	items := make([]structs.IikoOrderItem, 0, len(req.Products))
+	for _, p := range req.Products {
+		items = append(items, structs.IikoOrderItem{
+			ProductId: p.ID,
+			Amount:    float64(p.Quantity),
+		})
+	}
+
+	var iikoReq structs.IikoDeliveryCreateRequest
+	iikoReq.OrganizationId = organizationID
+	iikoReq.CreateOrderSettings.TransportToFrontTimeout = 300 // 5 min, docs'da default 600 bo'lishi mumkin
+
+	iikoReq.Order = structs.IikoOrder{
+		OrganizationId: organizationID,
+		OrderTypeId:    orderTypeID,
+		PaymentTypeId:  paymentTypeID,
+		Items:          items,
+	}
+
+	if req.DeliveryType == "delivery" && req.Address != nil {
+		iikoReq.Order.Comment = fmt.Sprintf("%s (lat: %.6f, lng: %.6f, distance: %.2f km)",
+			req.Address.Name, req.Address.Lat, req.Address.Lng, req.Address.DistanceKm)
+	}
+
+	do := func(tok string) (int, []byte, error) {
+		baseUrl := "https://api-ru.iiko.services/api/1/deliveries/create"
+
+		b, err := json.Marshal(iikoReq)
+		if err != nil {
+			return 0, nil, err
+		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseUrl, bytes.NewReader(b))
+		if err != nil {
+			return 0, nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Accept", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
+
+		client := &http.Client{Timeout: 20 * time.Second}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return 0, nil, err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+
+		return resp.StatusCode, body, nil
+	}
+
+	status, body, err := do(token)
+	if err != nil {
+		return result, err
+	}
+
+	if status == http.StatusUnauthorized {
+		s.logger.Info(ctx, "CreateOrder received 401; refreshing token and retrying")
+		tr, err := s.GetIikoAccessToken(ctx)
+		if err != nil {
+			return result, fmt.Errorf("failed to refresh token after 401: %w", err)
+		}
+		status, body, err = do(tr.Token)
+		if err != nil {
+			return result, err
+		}
+		if status == http.StatusUnauthorized {
+			return result, fmt.Errorf("unauthorized from iiko even after token refresh: %s", string(body))
+		}
+	}
+
+	if status < 200 || status >= 300 {
+		s.logger.Error(ctx, "CreateOrder non-2xx", zap.Int("status", status), zap.ByteString("body", body))
+		return result, fmt.Errorf("iiko deliveries/create returned %d: %s", status, string(body))
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		s.logger.Error(ctx, "CreateOrder: failed to unmarshal body", zap.Error(err), zap.ByteString("body", body))
+		return result, err
+	}
+
+	return result, nil
 }

@@ -32,7 +32,7 @@ type GetListOrderByTgIDResponse struct {
 	Phone  string  `json:"phone"`
 	Orders []Order `json:"orders"`
 }
- 
+
 type Address struct {
 	Lat        float64 `json:"lat"`
 	Lng        float64 `json:"lng"`
@@ -50,7 +50,7 @@ type OrderProduct struct {
 
 type CreateOrder struct {
 	TgID           int64          `json:"tgId"`
-	Address        Address        `json:"address"`
+	Address        *Address       `json:"address"`
 	DeliveryType   string         `json:"deliveryType"`
 	PaymentMethod  string         `json:"paymentMethod"`
 	Products       []OrderProduct `json:"products"`
@@ -80,4 +80,36 @@ type GetListOrderResponse struct {
 type UpdateStatus struct {
 	OrderId string `json:"orderId"`
 	Status  string `json:"status"`
+}
+
+type IikoOrderItem struct {
+	ProductId string  `json:"productId"`
+	Amount    float64 `json:"amount"`
+}
+
+type IikoOrder struct {
+	OrganizationId string          `json:"organizationId"`
+	OrderTypeId    string          `json:"orderTypeId,omitempty"` // pickup/delivery turi
+	PaymentTypeId  string          `json:"paymentTypeId,omitempty"`
+	Phone          string          `json:"phone,omitempty"`
+	Comment        string          `json:"comment,omitempty"`
+	Items          []IikoOrderItem `json:"items"`
+}
+
+type IikoDeliveryCreateRequest struct {
+	OrganizationId      string `json:"organizationId"`
+	CreateOrderSettings struct {
+		TransportToFrontTimeout int32 `json:"transportToFrontTimeout"`
+	} `json:"createOrderSettings"`
+	Order IikoOrder `json:"order"`
+}
+
+type IikoDeliveryCreateResponse struct {
+	CorrelationId string `json:"correlationId"`
+	OrderInfo     struct {
+		Id             string  `json:"id"`
+		ExternalNumber string  `json:"externalNumber"`
+		FullSum        float64 `json:"fullSum"`
+		Status         string  `json:"status"`
+	} `json:"orderInfo"`
 }
