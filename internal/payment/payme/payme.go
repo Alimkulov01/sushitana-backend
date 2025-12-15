@@ -154,18 +154,10 @@ func expectedAmountTiyinFromOrderTotal(total any) int64 {
 	case uint:
 		return int64(v) * 100
 	default:
-		// fallback: 0 (sizda bu holat bo‘lmasligi kerak)
 		return 0
 	}
 }
 
-func isOneActivePerOrderViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "payme_one_active_per_order_uq") && strings.Contains(msg, "SQLSTATE 23505")
-}
 
 func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCheckPerformParams) (structs.PaymeCheckPerformResult, structs.RPCError) {
 	orderID, ok := parseOrderID(p.Account)
@@ -200,10 +192,8 @@ func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCh
 		)
 	}
 
-	// TotalPrice type’i sizda qanday bo‘lsa ham, tiyin hisobini stabil qiling
 	expected := expectedAmountTiyinFromOrderTotal(any(ord.Order.TotalPrice))
 	if expected == 0 {
-		// fallback: eski usul (agar yuqoridagi switch mos kelmasa)
 		expected = int64(math.Round(float64(ord.Order.TotalPrice) * 100))
 	}
 
@@ -266,7 +256,6 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 		)
 	}
 
-	// 1) Idempotent: shu paycom_transaction_id allaqachon yaratilgan bo‘lsa — o‘shani qaytaramiz
 	existing, e := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
 	if e == nil {
 		return structs.PaymeCreateResult{
@@ -278,14 +267,11 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 
 	amountSom := tiyinToSomString(p.Amount)
 
-	// 2) Create
 	tx, err := s.paymeRepo.Create(ctx, orderID, p.Id, amountSom, p.Time)
 	if err != nil {
-		// Bir order uchun boshqa aktiv transaction bor (sandbox shu holatda error kutadi)
 		if strings.Contains(err.Error(), "payme_one_active_per_order_uq") &&
 			strings.Contains(err.Error(), "SQLSTATE 23505") {
 
-			// Agar aynan shu id bo‘lsa (race holat), idempotent qaytaramiz
 			ex, e2 := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
 			if e2 == nil {
 				return structs.PaymeCreateResult{
@@ -324,7 +310,12 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 func (s *service) PerformTransaction(ctx context.Context, p structs.PaymePerformParams) (structs.PaymePerformResult, structs.RPCError) {
 	tx, err := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
 	if err != nil {
-		return structs.PaymePerformResult{}, rpcErr(-31003, "Транзакция не найдена", "Tranzaksiya topilmadi", "Transaction not found", "transaction")
+		return structs.PaymePerformResult{}, rpcErr(
+			-31003, 
+			"Транзакция не найдена", 
+			"Tranzaksiya topilmadi", 
+			"Transaction not found", 
+			"transaction")
 	}
 
 	if tx.State == paymerepo.StatePerformed {
@@ -336,7 +327,12 @@ func (s *service) PerformTransaction(ctx context.Context, p structs.PaymePerform
 	}
 
 	if tx.State < 0 {
-		return structs.PaymePerformResult{}, rpcErr(-31008, "Транзакция отменена", "Tranzaksiya bekor qilingan", "Transaction canceled", "state")
+		return structs.PaymePerformResult{}, rpcErr(
+			-31008, 
+			"Транзакция отменена", 
+			"Tranzaksiya bekor qilingan", 
+			"Transaction canceled", 
+			"state")
 	}
 
 	updated, err := s.paymeRepo.MarkPerformed(ctx, p.Id, nowMs())
@@ -360,7 +356,12 @@ func (s *service) PerformTransaction(ctx context.Context, p structs.PaymePerform
 func (s *service) CancelTransaction(ctx context.Context, p structs.PaymeCancelParams) (structs.PaymeCancelResult, structs.RPCError) {
 	tx, err := s.paymeRepo.GetByPaycomTransactionID(ctx, p.Id)
 	if err != nil {
-		return structs.PaymeCancelResult{}, rpcErr(-31003, "Транзакция не найдена", "Tranzaksiya topilmadi", "Transaction not found", "transaction")
+		return structs.PaymeCancelResult{}, rpcErr(
+			-31003, 
+			"Транзакция не найдена", 
+			"Tranzaksiya topilmadi", 
+			"Transaction not found", 
+			"transaction")
 	}
 
 	if tx.State < 0 {
@@ -376,7 +377,12 @@ func (s *service) CancelTransaction(ctx context.Context, p structs.PaymeCancelPa
 	}
 
 	if tx.State != paymerepo.StateCreated && tx.State != paymerepo.StatePerformed {
-		return structs.PaymeCancelResult{}, rpcErr(-32400, "Неверное состояние", "Noto‘g‘ri holat", "Invalid transaction state", "state")
+		return structs.PaymeCancelResult{}, rpcErr(
+			-32400,
+			"Неверное состояние", 
+			"Noto‘g‘ri holat", 
+			"Invalid transaction state", 
+			"state")
 	}
 
 	newState := paymerepo.StateCanceledCreated
@@ -392,7 +398,12 @@ func (s *service) CancelTransaction(ctx context.Context, p structs.PaymeCancelPa
 	updated, err := s.paymeRepo.MarkCanceled(ctx, p.Id, cancelAt, p.Reason, newState)
 	if err != nil {
 		s.logger.Error(ctx, "payme MarkCanceled failed", zap.Error(err))
-		return structs.PaymeCancelResult{}, rpcErr(-32400, "Внутренняя ошибка", "Ichki xato", "Internal error", nil)
+		return structs.PaymeCancelResult{}, rpcErr(
+			-32400, 
+			"Внутренняя ошибка", 
+			"Ichki xato", 
+			"Internal error", 
+			nil)
 	}
 
 	if shouldCancelOrder {
@@ -452,14 +463,24 @@ func (s *service) GetStatement(ctx context.Context, p structs.PaymeStatementPara
 	txs, err := s.paymeRepo.GetStatement(ctx, p.From, p.To)
 	if err != nil {
 		s.logger.Error(ctx, "payme GetStatement failed", zap.Error(err))
-		return structs.PaymeStatementResult{}, rpcErr(-32400, "Внутренняя ошибка", "Ichki xato", "Internal error", nil)
+		return structs.PaymeStatementResult{}, rpcErr(
+			-32400, 
+			"Внутренняя ошибка", 
+			"Ichki xato", 
+			"Internal error", 
+			nil)
 	}
 
 	out := make([]structs.Transaction, 0, len(txs))
 	for _, tx := range txs {
 		amountTiyin, e := somStringToTiyin(tx.Amount)
 		if e != nil {
-			return structs.PaymeStatementResult{}, rpcErr(-32400, "Внутренняя ошибка", "Ichki xato", "Internal error", nil)
+			return structs.PaymeStatementResult{}, rpcErr(
+				-32400, 
+				"Внутренняя ошибка", 
+				"Ichki xato", 
+				"Internal error", 
+				nil)
 		}
 
 		var reasonPtr *int

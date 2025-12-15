@@ -109,20 +109,14 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			return "", fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env yo‘q")
 		}
 
-		// merchant_trans_id bo‘ladigan qiymat (unikal bo‘lsin)
 		merchantTransID := cast.ToString(order.Order.OrderNumber)
-
-		// MUHIM: bu "pul summasi" bo‘lishi kerak (count emas!)
-		// masalan: total = order total + delivery
-		// amountInt := int64(order.Order.TotalPrice) // <-- sizdagi real fieldga moslang
 		amountInt := 1000
 		amount := float64(amountInt)
 
-		// 1) internal/checkout/prepare
 		_, err := s.clickSvc.CheckoutPrepare(ctx, structs.CheckoutPrepareRequest{
 			ServiceID:        serviceId,
 			MerchantID:       merchantId,
-			TransactionParam: merchantTransID, // => callback’da merchant_trans_id bo‘lib keladi
+			TransactionParam: merchantTransID,
 			Amount:           amount,
 			ReturnUrl:        "order",
 			Description:      fmt.Sprintf("Order #%s", merchantTransID),
@@ -132,17 +126,6 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			return "", fmt.Errorf("click checkout/prepare failed: %w", err)
 		}
 
-		// 2) internal/checkout/invoice (SMS yuboradi)
-		// invResp, err := s.clickSvc.CheckoutInvoice(ctx, structs.CheckoutInvoiceRequest{
-		// 	RequestId:   prep.RequestId,
-		// 	PhoneNumber: order.Phone, // formatni Click talabiga moslab yuboring
-		// })
-		// if err != nil {
-		// 	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
-		// 	return "", fmt.Errorf("click checkout/invoice failed: %w", err)
-		// }
-
-		// 3) invoices jadvaliga yozib qo‘ying
 		inv := structs.Invoice{
 			// ClickInvoiceID:  invResp.InvoiceId,
 			MerchantTransID: merchantTransID,
@@ -163,56 +146,16 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			Status:  "WAITING_PAYMENT",
 		})
 
-		// bu flow’da siz link qaytarmaysiz, SMS ketadi
 		payURL = BuildClickPayURL(cast.ToInt64(serviceId), merchantId, int64(amountInt), merchantTransID, "order")
 		return payURL, nil
 
-	// case "CLICK":
-	// 	// 1) order status -> WAITING_PAYMENT
-	// 	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-	// 		OrderId: order.Order.ID,
-	// 		Status:  "WAITING_PAYMENT",
-	// 	})
-
-	// 	// 2) merchant_trans_id (unikal bo‘lsin, callback’da shu keladi)
-	// 	// tavsiya: order.Order.ID (uuid) yoki order.Order.OrderNumber
-	// 	merchantTransID := cast.ToString(order.Order.OrderNumber)
-
-	// 	// 3) amount (UZS) — real summaga moslang (total + delivery)
-	// 	// TODO: sizdagi real fieldga moslab qo‘ying
-	// 	amountInt := int64(1000)
-	// 	amountStr := strconv.FormatInt(amountInt, 10)
-
-	// 	// 4) Shop redirect URL yasash (SMS emas)
-	// 	// ReturnURL ixtiyoriy: webapp route yoki saytga qaytish URL
-	// 	returnURL := os.Getenv("CLICK_RETURN_URL") // bo‘lmasa "" qolsin
-
-	// 	payURL, err = s.shopSvc.BuildPayURL(ctx, structs.PayLinkParams{
-	// 		// ServiceID/MerchantID bo‘sh qoldirsangiz shopSvc envdan oladi (siz shunaqa qilgansiz)
-	// 		Amount:           amountStr,
-	// 		TransactionParam: merchantTransID,
-	// 		ReturnURL:        returnURL,
-	// 	})
-	// 	if err != nil {
-	// 		s.logger.Error(ctx, "->shopSvc.BuildPayURL failed", zap.Error(err), zap.String("order_id", id))
-	// 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: order.Order.ID, Status: "UNPAID"})
-	// 		return "", fmt.Errorf("build click pay url failed: %w", err)
-	// 	}
-
-	// 	// (ixtiyoriy) attemptni DBga yozish: click_trans_id callbackda keladi, hozircha faqat MTI/amount/status saqlang
-	// 	// _ = s.clickRepo.Create(ctx, ...)
-
-	// 	return payURL, nil
 	case "PAYME":
-		// 1) order status -> WAITING_PAYMENT
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 			OrderId: order.Order.ID,
 			Status:  "WAITING_PAYMENT",
 		})
-
-		// 2) payme checkout link yasab qaytarish
-		merchantID := os.Getenv("PAYME_KASSA_ID") // kassangiz (merchant) id
-		amountTiyin := int64(1000 * 100)          // som -> tiyin ---------------------------
+		merchantID := os.Getenv("PAYME_KASSA_ID")
+		amountTiyin := int64(1000 * 100)        
 		payURL, err = s.paymeSvc.BuildPaymeCheckoutURL(merchantID, order.Order.ID, amountTiyin)
 		if err != nil {
 			s.logger.Error(ctx, "->paymeSvc.BuildPaymeCheckoutURL failed", zap.Error(err), zap.String("order_id", id))
@@ -298,8 +241,8 @@ func BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, order
 	v := url.Values{}
 	v.Set("service_id", cast.ToString(serviceID))
 	v.Set("merchant_id", merchantID)
-	v.Set("amount", fmt.Sprintf("%d.00", amountInt)) // N.NN format :contentReference[oaicite:3]{index=3}
-	v.Set("transaction_param", orderID)              // => merchant_trans_id :contentReference[oaicite:4]{index=4}
+	v.Set("amount", fmt.Sprintf("%d.00", amountInt))
+	v.Set("transaction_param", orderID)             
 	if returnURL != "" {
 		v.Set("return_url", returnURL)
 	}

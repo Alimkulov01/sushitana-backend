@@ -120,11 +120,17 @@ func (h *handler) Handle(c *gin.Context) {
 
 	var req rpcReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, nil, structs.RPCError{Code: -32700, Message: "Parse error"})
+		fail(c, nil, structs.RPCError{
+			Code: -32700, 
+			Message: "Parse error",
+		})
 		return
 	}
 	if req.JSONRPC != "2.0" || req.Method == "" {
-		fail(c, req.ID, structs.RPCError{Code: -32600, Message: "Invalid Request"})
+		fail(c, req.ID, structs.RPCError{
+			Code: -32600, 
+			Message: "Invalid Request",
+		})
 		return
 	}
 
@@ -135,7 +141,10 @@ func (h *handler) Handle(c *gin.Context) {
 	case "CheckPerformTransaction":
 		var p structs.PaymeCheckPerformParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			fail(c, req.ID, structs.RPCError{Code: -32600, Message: "Invalid params"})
+			fail(c, req.ID, structs.RPCError{
+				Code: -32600, 
+				Message: "Invalid params",
+			})
 			return
 		}
 		res, e := h.paymeSv.CheckPerformTransaction(ctx, p)
@@ -148,7 +157,10 @@ func (h *handler) Handle(c *gin.Context) {
 	case "CreateTransaction":
 		var p structs.PaymeCreateParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			fail(c, req.ID, structs.RPCError{Code: -32600, Message: "Invalid params"})
+			fail(c, req.ID, structs.RPCError{
+				Code: -32600, 
+				Message: "Invalid params",
+			})
 			return
 		}
 		res, e := h.paymeSv.CreateTransaction(ctx, p)
@@ -161,7 +173,10 @@ func (h *handler) Handle(c *gin.Context) {
 	case "PerformTransaction":
 		var p structs.PaymePerformParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			fail(c, req.ID, structs.RPCError{Code: -32600, Message: "Invalid params"})
+			fail(c, req.ID, structs.RPCError{
+				Code: -32600, 
+				Message: "Invalid params",
+			})
 			return
 		}
 		res, e := h.paymeSv.PerformTransaction(ctx, p)
@@ -174,7 +189,10 @@ func (h *handler) Handle(c *gin.Context) {
 	case "CancelTransaction":
 		var p structs.PaymeCancelParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			fail(c, req.ID, structs.RPCError{Code: -32600, Message: "Invalid params"})
+			fail(c, req.ID, structs.RPCError{
+				Code: -32600, 
+				Message: "Invalid params",
+			})
 			return
 		}
 		res, e := h.paymeSv.CancelTransaction(ctx, p)
@@ -187,7 +205,10 @@ func (h *handler) Handle(c *gin.Context) {
 	case "CheckTransaction":
 		var p structs.PaymeCheckParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			fail(c, req.ID, structs.RPCError{Code: -32600, Message: "Invalid params"})
+			fail(c, req.ID, structs.RPCError{
+				Code: -32600, 
+				Message: "Invalid params",
+			})
 			return
 		}
 		res, e := h.paymeSv.CheckTransaction(ctx, p)
@@ -200,7 +221,10 @@ func (h *handler) Handle(c *gin.Context) {
 	case "GetStatement":
 		var p structs.PaymeStatementParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			fail(c, req.ID, structs.RPCError{Code: -32600, Message: "Invalid params"})
+			fail(c, req.ID, structs.RPCError{
+				Code: -32600, 
+				Message: "Invalid params",
+			})
 			return
 		}
 		res, e := h.paymeSv.GetStatement(ctx, p)
@@ -211,6 +235,10 @@ func (h *handler) Handle(c *gin.Context) {
 		ok(c, req.ID, res)
 
 	default:
-		fail(c, req.ID, structs.RPCError{Code: -32601, Message: "Method not found", Data: req.Method})
+		fail(c, req.ID, structs.RPCError{
+			Code: -32601, 
+			Message: "Method not found", 
+			Data: req.Method,
+		})
 	}
 }
