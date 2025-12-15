@@ -289,7 +289,7 @@ func (h *handler) Complete(c *gin.Context) {
 			if req.Error != nil && *req.Error != 0 {
 				orderStatus = "UNPAID"
 			}
-			if ue := h.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+			if ue := h.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
 				OrderId: inv.OrderID.String,
 				Status:  orderStatus,
 			}); ue != nil {
