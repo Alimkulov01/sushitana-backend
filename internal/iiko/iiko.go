@@ -422,8 +422,12 @@ func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliver
 	if req.OrganizationId == "" || req.TerminalGroupId == "" {
 		return result, fmt.Errorf("iiko request missing organizationId/terminalGroupId")
 	}
+	req.Order.Phone = normalizePhone(req.Order.Phone)
 	if req.Order.Phone == "" {
 		return result, fmt.Errorf("iiko request missing order.phone")
+	}
+	if !strings.HasPrefix(req.Order.Phone, "+") {
+		return result, fmt.Errorf("iiko order.phone must start with '+': %q", req.Order.Phone)
 	}
 	if req.Order.OrderTypeId == "" {
 		return result, fmt.Errorf("iiko request missing order.orderTypeId")
