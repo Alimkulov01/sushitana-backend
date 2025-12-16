@@ -473,6 +473,15 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 	}, nil
 }
 func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookDeliveryOrderUpdate) error {
+	s.logger.Info(ctx, "IIKO webhook DELIVERYORDERUPDATE IN",
+		zap.String("eventType", evt.EventType),
+		zap.String("correlationId", evt.CorrelationID),
+		zap.String("externalNumber", strings.TrimSpace(evt.EventInfo.ExternalNumber)),
+		zap.String("creationStatus", strings.TrimSpace(evt.EventInfo.CreationStatus)),
+		zap.String("iikoOrderId", strings.TrimSpace(evt.EventInfo.ID)),
+		zap.String("posId", strings.TrimSpace(evt.EventInfo.PosID)),
+		zap.Int("order_raw_len", len(evt.EventInfo.Order)),
+	)
 	if strings.ToUpper(evt.EventType) != "DELIVERYORDERUPDATE" {
 		return nil
 	}
@@ -484,32 +493,81 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 
 	num, err := strconv.ParseInt(ext, 10, 64)
 	if err != nil {
+		s.logger.Warn(ctx, "IIKO webhook bad externalNumber",
+			zap.String("externalNumber", ext),
+			zap.Error(err),
+		)
 		return fmt.Errorf("iiko webhook: bad externalNumber=%q: %w", ext, err)
 	}
 
 	ord, err := s.orderRepo.GetByOrderNumber(ctx, num)
 	if err != nil {
+		s.logger.Error(ctx, "IIKO webhook GetByOrderNumber failed",
+			zap.Int64("orderNumber", num),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	// creationStatus
+	s.logger.Info(ctx, "IIKO webhook matched local order",
+		zap.String("orderId", ord.ID),
+		zap.Int64("orderNumber", ord.OrderNumber),
+		zap.String("currentStatus", ord.Status),
+		zap.String("currentPaymentStatus", ord.PaymentStatus),
+	)
+
 	if strings.ToUpper(strings.TrimSpace(evt.EventInfo.CreationStatus)) != "SUCCESS" {
+		s.logger.Warn(ctx, "IIKO webhook creationStatus not SUCCESS -> REJECTED",
+			zap.String("creationStatus", evt.EventInfo.CreationStatus),
+			zap.String("orderId", ord.ID),
+		)
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: "REJECTED"})
 		return nil
 	}
-
-	// iiko meta update (iiko id/posId ni saqlab qo‘yish)
-	_ = s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationID)
-
+	if err := s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationID); err != nil {
+		s.logger.Error(ctx, "IIKO webhook UpdateIikoMeta failed",
+			zap.String("orderId", ord.ID),
+			zap.Error(err),
+		)
+	} else {
+		s.logger.Info(ctx, "IIKO webhook iiko meta updated",
+			zap.String("orderId", ord.ID),
+			zap.String("iikoOrderId", evt.EventInfo.ID),
+			zap.String("posId", evt.EventInfo.PosID),
+			zap.String("correlationId", evt.CorrelationID),
+		)
+	}
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
 	newStatus := mapIikoStatusToOurStatus(iikoStatus)
+
+	s.logger.Info(ctx, "IIKO webhook status mapping",
+		zap.String("orderId", ord.ID),
+		zap.String("iikoStatus", iikoStatus),
+		zap.String("mappedStatus", newStatus),
+	)
+
 	if newStatus == "" {
 		return nil
 	}
-	return s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: newStatus})
+
+	if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: newStatus}); err != nil {
+		s.logger.Error(ctx, "IIKO webhook UpdateStatus failed",
+			zap.String("orderId", ord.ID),
+			zap.String("status", newStatus),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	s.logger.Info(ctx, "IIKO webhook UpdateStatus OK",
+		zap.String("orderId", ord.ID),
+		zap.String("status", newStatus),
+	)
+	return nil
 }
 
 func extractIikoOrderStatus(raw json.RawMessage) string {
+
 	if len(raw) == 0 {
 		return ""
 	}
