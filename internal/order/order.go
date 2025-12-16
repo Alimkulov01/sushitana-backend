@@ -332,7 +332,7 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 	st := strings.ToUpper(strings.TrimSpace(req.Status))
 	req.Status = st
 
-	if st == "SENT_TO_IIKO" {
+	if st == "COOKING" {
 		return s.sendToIikoIfAllowed(ctx, req.OrderId)
 	}
 
