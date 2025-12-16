@@ -72,9 +72,11 @@ func (h *handler) GetIikoAccessToken(c *gin.Context) {
 func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	secret := c.Param("secret")
-	if secret == "" || secret != os.Getenv("IIKO_WEBHOOK_SECRET") {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+	secret := strings.TrimSpace(c.Param("secret"))
+	expected := strings.TrimSpace(os.Getenv("IIKO_WEBHOOK_SECRET"))
+
+	if secret == "" || expected == "" || !strings.EqualFold(secret, expected) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid secret"})
 		return
 	}
 
