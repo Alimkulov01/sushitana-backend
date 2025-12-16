@@ -1,10 +1,9 @@
 package iiko
 
 import (
-	"fmt"
+	"bytes"
+	"io"
 	"net/http"
-	"os"
-	"strings"
 	"sushitana/internal/iiko"
 	"sushitana/internal/order"
 	"sushitana/internal/responses"
@@ -71,40 +70,33 @@ func (h *handler) GetIikoAccessToken(c *gin.Context) {
 }
 
 func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
-	var (
-		response structs.Response
-		req      structs.IikoWebhookDeliveryOrderUpdate
-		ctx      = c.Request.Context()
+	ctx := c.Request.Context()
+
+	raw, _ := io.ReadAll(c.Request.Body)
+	h.logger.Info(ctx, "IIKO webhook incoming",
+		zap.String("path", c.FullPath()),
+		zap.String("remote_ip", c.ClientIP()),
+		zap.Int("body_len", len(raw)),
+		zap.ByteString("body", raw),
 	)
 
-	defer reply.Json(c.Writer, http.StatusOK, &response)
+	// body qayta o‘qilishi uchun
+	c.Request.Body = io.NopCloser(bytes.NewReader(raw))
 
-	// 1) secret tekshirish (URL ichida)
-	secret := c.Param("secret")
-	if secret == "" || secret != os.Getenv("IIKO_WEBHOOK_SECRET") {
-		response = responses.BadRequest
-		return
-	}
-	fmt.Println("GET IIKO ACCESS TOKEN", secret)
-	// 2) JSON parse
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warn(ctx, "iiko webhook parse error", zap.Error(err))
-		response = responses.BadRequest
+	var evt structs.IikoWebhookDeliveryOrderUpdate
+	if err := c.ShouldBindJSON(&evt); err != nil {
+		h.logger.Error(ctx, "IIKO webhook bind json failed", zap.Error(err))
+		c.JSON(200, gin.H{"ok": true}) // iiko qayta qayta urmasin
 		return
 	}
 
-	// 3) Bizga kerak bo‘lgan event: DeliveryOrderUpdate
-	fmt.Println(req.EventType)
-	if strings.ToUpper(strings.TrimSpace(req.EventType)) != "DELIVERYORDERUPDATE" {
-		response = responses.Success
-		return
-	}
+	h.logger.Info(ctx, "IIKO webhook parsed",
+		zap.String("eventType", evt.EventType),
+		zap.String("correlationId", evt.CorrelationID),
+		zap.String("externalNumber", evt.EventInfo.ExternalNumber),
+		zap.String("creationStatus", evt.EventInfo.CreationStatus),
+	)
 
-	if err := h.orderSvc.HandleIikoDeliveryOrderUpdate(ctx, req); err != nil {
-		h.logger.Error(ctx, "HandleIikoDeliveryOrderUpdate failed", zap.Error(err))
-		response = responses.Success
-		return
-	}
-
-	response = responses.Success
+	_ = h.orderSvc.HandleIikoDeliveryOrderUpdate(ctx, evt)
+	c.JSON(200, gin.H{"ok": true})
 }

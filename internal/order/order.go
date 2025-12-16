@@ -473,16 +473,12 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 	}, nil
 }
 func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookDeliveryOrderUpdate) error {
-	s.logger.Info(ctx, "IIKO webhook DELIVERYORDERUPDATE IN",
+	s.logger.Info(ctx, "IIKO webhook handling",
 		zap.String("eventType", evt.EventType),
-		zap.String("correlationId", evt.CorrelationID),
-		zap.String("externalNumber", strings.TrimSpace(evt.EventInfo.ExternalNumber)),
-		zap.String("creationStatus", strings.TrimSpace(evt.EventInfo.CreationStatus)),
-		zap.String("iikoOrderId", strings.TrimSpace(evt.EventInfo.ID)),
-		zap.String("posId", strings.TrimSpace(evt.EventInfo.PosID)),
-		zap.Int("order_raw_len", len(evt.EventInfo.Order)),
+		zap.String("externalNumber", evt.EventInfo.ExternalNumber),
+		zap.String("creationStatus", evt.EventInfo.CreationStatus),
 	)
-	if strings.ToUpper(evt.EventType) != "DELIVERYORDERUPDATE" {
+	if strings.ToUpper(evt.EventType) != "DeliveryOrderUpdate" {
 		return nil
 	}
 
