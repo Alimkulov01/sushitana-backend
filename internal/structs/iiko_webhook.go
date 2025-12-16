@@ -2,21 +2,28 @@ package structs
 
 import "encoding/json"
 
-type IikoWebhookDeliveryOrderUpdate struct {
-	EventType      string                      `json:"eventType"`     
-	EventTime      string                      `json:"eventTime"`      
-	OrganizationID string                      `json:"organizationId"` 
-	CorrelationID  string                      `json:"correlationId"`  
-	EventInfo      IikoWebhookDeliveryEventInfo `json:"eventInfo"`
+type IikoWebhookEvent struct {
+	EventType      string               `json:"eventType"`
+	EventTime      string               `json:"eventTime"`
+	OrganizationId string               `json:"organizationId"`
+	CorrelationId  string               `json:"correlationId"`
+	EventInfo      IikoWebhookEventInfo `json:"eventInfo"`
 }
 
-type IikoWebhookDeliveryEventInfo struct {
-	ID             string          `json:"id"`             // eng MUHIM: siz iiko create’da shu ID’ni internal order_id qilib yuborasiz
-	PosID          string          `json:"posId"`          // iiko'dagi order/delivery POS id
-	ExternalNumber string          `json:"externalNumber"` // tashqi raqam bo‘lishi mumkin
-	OrganizationID string          `json:"organizationId"` // qayta keladi
-	Timestamp      int64           `json:"timestamp"`      // unix seconds bo‘lishi mumkin
-	CreationStatus string          `json:"creationStatus"` // "Success" yoki error holat
-	ErrorInfo      json.RawMessage `json:"errorInfo"`      // ba'zan null bo‘ladi
-	Order          json.RawMessage `json:"order"`          // juda katta obyekt, statusni shu yerdan olasiz
+type IikoWebhookEventInfo struct {
+	ID             string                `json:"id"`
+	PosID          string                `json:"posId"`
+	ExternalNumber string                `json:"externalNumber"`
+	OrganizationId string                `json:"organizationId"`
+	Timestamp      int64                 `json:"timestamp"`
+	CreationStatus string                `json:"creationStatus"`
+	ErrorInfo      *IikoWebhookErrorInfo `json:"errorInfo,omitempty"`
+	Order          json.RawMessage       `json:"order"` // null bo‘lishi mumkin
+}
+
+type IikoWebhookErrorInfo struct {
+	Code           string `json:"code"`
+	Message        string `json:"message"`
+	Description    string `json:"description"`
+	AdditionalData any    `json:"additionalData"`
 }

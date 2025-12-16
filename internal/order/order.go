@@ -52,7 +52,8 @@ type (
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
 		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
-		HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookDeliveryOrderUpdate) error
+		HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookEvent) error
+		HandleIikoDeliveryOrderError(ctx context.Context, evt structs.IikoWebhookEvent) error
 	}
 
 	service struct {
@@ -472,7 +473,7 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		},
 	}, nil
 }
-func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookDeliveryOrderUpdate) error {
+func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookEvent) error {
 	s.logger.Info(ctx, "IIKO webhook handling",
 		zap.String("eventType", evt.EventType),
 		zap.String("externalNumber", evt.EventInfo.ExternalNumber),
@@ -520,7 +521,7 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: "REJECTED"})
 		return nil
 	}
-	if err := s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationID); err != nil {
+	if err := s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationId); err != nil {
 		s.logger.Error(ctx, "IIKO webhook UpdateIikoMeta failed",
 			zap.String("orderId", ord.ID),
 			zap.Error(err),
@@ -530,7 +531,7 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 			zap.String("orderId", ord.ID),
 			zap.String("iikoOrderId", evt.EventInfo.ID),
 			zap.String("posId", evt.EventInfo.PosID),
-			zap.String("correlationId", evt.CorrelationID),
+			zap.String("correlationId", evt.CorrelationId),
 		)
 	}
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
@@ -559,6 +560,44 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		zap.String("orderId", ord.ID),
 		zap.String("status", newStatus),
 	)
+	return nil
+}
+
+func (s *service) HandleIikoDeliveryOrderError(ctx context.Context, evt structs.IikoWebhookEvent) error {
+	if strings.ToUpper(strings.TrimSpace(evt.EventType)) != "DELIVERYORDERERROR" {
+		return nil
+	}
+
+	ext := strings.TrimSpace(evt.EventInfo.ExternalNumber)
+	if ext == "" {
+		return fmt.Errorf("iiko webhook error: empty externalNumber")
+	}
+
+	num, err := strconv.ParseInt(ext, 10, 64)
+	if err != nil {
+		return fmt.Errorf("iiko webhook error: bad externalNumber=%q: %w", ext, err)
+	}
+
+	ord, err := s.orderRepo.GetByOrderNumber(ctx, num)
+	if err != nil {
+		return err
+	}
+
+	_ = s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationId)
+
+	// bu yerda siz REJECTED yoki FAILED_IIKO kabi status ishlating
+	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: "REJECTED"})
+
+	// xohlasangiz errorInfo ni log qiling
+	if evt.EventInfo.ErrorInfo != nil {
+		s.logger.Error(ctx, "IIKO order creation error",
+			zap.String("order_id", ord.ID),
+			zap.String("externalNumber", ext),
+			zap.String("code", evt.EventInfo.ErrorInfo.Code),
+			zap.String("message", evt.EventInfo.ErrorInfo.Message),
+			zap.String("description", evt.EventInfo.ErrorInfo.Description),
+		)
+	}
 	return nil
 }
 

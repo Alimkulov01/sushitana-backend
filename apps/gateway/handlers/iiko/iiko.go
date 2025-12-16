@@ -1,7 +1,6 @@
 package iiko
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -71,44 +70,47 @@ func (h *handler) GetIikoAccessToken(c *gin.Context) {
 }
 
 func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
-	var (
-		response structs.Response
-		req      structs.IikoWebhookDeliveryOrderUpdate
-		ctx      = c.Request.Context()
-	)
+	ctx := c.Request.Context()
 
-	defer reply.Json(c.Writer, http.StatusOK, &response)
-
-	// 1) secret tekshirish (URL ichida)
 	secret := c.Param("secret")
 	if secret == "" || secret != os.Getenv("IIKO_WEBHOOK_SECRET") {
-		response = responses.BadRequest
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
-	fmt.Println("GET IIKO ACCESS TOKEN", secret)
-	// 2) JSON parse
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warn(ctx, "iiko webhook parse error", zap.Error(err))
-		response = responses.BadRequest
+
+	var events []structs.IikoWebhookEvent
+	if err := c.ShouldBindJSON(&events); err != nil {
+		h.logger.Error(ctx, "IIKO webhook bind json failed", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	h.logger.Info(ctx, "IIKO webhook parsed",
-		zap.String("eventType", req.EventType),
-		zap.String("correlationId", req.CorrelationID),
-		zap.String("externalNumber", req.EventInfo.ExternalNumber),
-		zap.String("creationStatus", req.EventInfo.CreationStatus),
+		zap.Int("count", len(events)),
+		zap.String("remote_ip", c.ClientIP()),
 	)
 
-	if strings.ToUpper(strings.TrimSpace(req.EventType)) != "DELIVERYORDERUPDATE" {
-		response = responses.Success
-		return
+	for _, evt := range events {
+		h.logger.Info(ctx, "IIKO webhook event",
+			zap.String("eventType", evt.EventType),
+			zap.String("externalNumber", evt.EventInfo.ExternalNumber),
+			zap.String("creationStatus", evt.EventInfo.CreationStatus),
+			zap.String("correlationId", evt.CorrelationId),
+		)
+
+		switch strings.ToUpper(strings.TrimSpace(evt.EventType)) {
+		case "DELIVERYORDERUPDATE":
+			if err := h.orderSvc.HandleIikoDeliveryOrderUpdate(ctx, evt); err != nil {
+				h.logger.Error(ctx, "HandleIikoDeliveryOrderUpdate failed", zap.Error(err))
+			}
+		case "DELIVERYORDERERROR":
+			if err := h.orderSvc.HandleIikoDeliveryOrderError(ctx, evt); err != nil {
+				h.logger.Error(ctx, "HandleIikoDeliveryOrderError failed", zap.Error(err))
+			}
+		default:
+			h.logger.Info(ctx, "IIKO webhook ignored eventType", zap.String("eventType", evt.EventType))
+		}
 	}
 
-	if err := h.orderSvc.HandleIikoDeliveryOrderUpdate(ctx, req); err != nil {
-		h.logger.Error(ctx, "HandleIikoDeliveryOrderUpdate failed", zap.Error(err))
-		response = responses.Success
-		return
-	}
-
-	response = responses.Success
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
