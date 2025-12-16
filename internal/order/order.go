@@ -342,10 +342,6 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 		if err := s.sendToIikoIfAllowed(ctx, req.OrderId); err != nil {
 			return err
 		}
-		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: req.OrderId, Status: "COOKING"}); err != nil {
-			s.logger.Error(ctx, "->orderRepo.UpdateStatus COOKING", zap.Error(err))
-			return err
-		}
 		return nil
 	}
 
