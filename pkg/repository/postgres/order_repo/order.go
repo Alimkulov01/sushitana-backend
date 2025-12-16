@@ -37,6 +37,7 @@ type (
 		AddLink(ctx context.Context, link, order_id string) error
 		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
 		UpdateClickInfo(ctx context.Context, orderID, requestID, transactionParam string) error
+		UpdateIikoMeta(ctx context.Context, orderID, iikoOrderID, iikoPosID, corrID string) error
 	}
 
 	repo struct {
@@ -685,5 +686,17 @@ func (r repo) AddLink(ctx context.Context, link, order_id string) error {
         WHERE id = $2
     `
 	_, err := r.db.Exec(ctx, query, link, order_id)
+	return err
+}
+
+func (r repo) UpdateIikoMeta(ctx context.Context, orderID, iikoOrderID, iikoPosID, corrID string) error {
+	q := `
+		UPDATE orders
+		SET iiko_order_id = $2,
+			iiko_pos_id = $3,
+			iiko_correlation_id = $4,
+			updated_at = now()
+		WHERE id = $1`
+	_, err := r.db.Exec(ctx, q, orderID, iikoOrderID, iikoPosID, corrID)
 	return err
 }

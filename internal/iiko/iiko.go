@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	iikorepo "sushitana/pkg/repository/postgres/iiko_repo"
@@ -32,7 +33,7 @@ type (
 
 	Service interface {
 		GetIikoAccessToken(ctx context.Context) (resp structs.IikoClientTokenResponse, err error)
-		CreateOrder(ctx context.Context, req structs.CreateOrder) (structs.IikoDeliveryCreateResponse, error)
+		CreateOrder(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error)
 		GetCategory(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetCategoryResponse, error)
 		GetProduct(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetProductResponse, error)
 		UpdateIIKO(ctx context.Context, id int64, token string) (int64, error)
@@ -407,81 +408,69 @@ func (s *service) EnsureValidIikoToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-func (s *service) CreateOrder(ctx context.Context, req structs.CreateOrder) (structs.IikoDeliveryCreateResponse, error) {
-	var result structs.IikoDeliveryCreateResponse
+func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) {
+	var result structs.IikoCreateDeliveryResponse
+
+	start := time.Now()
 
 	token, err := s.EnsureValidIikoToken(ctx)
 	if err != nil {
+		s.logger.Error(ctx, "IIKO EnsureValidIikoToken failed", zap.Error(err))
 		return result, fmt.Errorf("EnsureValidIikoToken: %w", err)
 	}
-	organizationID := os.Getenv("IIKO_ORGANIZATION_ID")
-	if organizationID == "" {
-		return result, fmt.Errorf("IIKO_ORGANIZATION_ID is empty")
+
+	if req.OrganizationId == "" || req.TerminalGroupId == "" {
+		return result, fmt.Errorf("iiko request missing organizationId/terminalGroupId")
+	}
+	if req.Order.Phone == "" {
+		return result, fmt.Errorf("iiko request missing order.phone")
+	}
+	if req.Order.OrderTypeId == "" {
+		return result, fmt.Errorf("iiko request missing order.orderTypeId")
+	}
+	if len(req.Order.Items) == 0 {
+		return result, fmt.Errorf("iiko request has empty order.items")
+	}
+	for i := range req.Order.Items {
+		if req.Order.Items[i].Type == "" {
+			req.Order.Items[i].Type = "Product"
+		}
 	}
 
-	var deliveryOrderTypeID, pickupOrderTypeID string
-	deliveryOrderTypeID = os.Getenv("IIKO_DELIVERY_ORDER_TYPE_ID")
-	pickupOrderTypeID = os.Getenv("IIKO_PICKUP_ORDER_TYPE_ID")
-
-	paymentCashID := os.Getenv("IIKO_PAYMENT_CASH_ID")
-	paymentClickID := os.Getenv("IIKO_PAYMENT_CLICK_ID")
-	paymentPaymeID := os.Getenv("IIKO_PAYMENT_PAYME_ID")
-
-	var orderTypeID string
-	switch req.DeliveryType {
-	case "delivery":
-		orderTypeID = deliveryOrderTypeID
-	case "pickup":
-		orderTypeID = pickupOrderTypeID
-	default:
-		return result, fmt.Errorf("unknown DeliveryType: %s", req.DeliveryType)
+	// PaymentTypeKind normalize (Cash vs External)
+	// Cash -> "Cash", Click/Payme -> "External" + isProcessedExternally=true
+	for i := range req.Order.Payments {
+		p := &req.Order.Payments[i]
+		switch strings.ToUpper(p.PaymentTypeKind) {
+		case "CASH":
+			p.PaymentTypeKind = "Cash"
+		case "ONLINE":
+			p.PaymentTypeKind = "External"
+			if !p.IsProcessedExternally {
+				p.IsProcessedExternally = true
+			}
+		}
 	}
 
-	var paymentTypeID string
-	switch req.PaymentMethod {
-	case "cash":
-		paymentTypeID = paymentCashID
-	case "click":
-		paymentTypeID = paymentClickID
-	case "payme":
-		paymentTypeID = paymentPaymeID
-	default:
-		return result, fmt.Errorf("unknown paymentMethod: %s", req.PaymentMethod)
-	}
+	baseURL := "https://api-ru.iiko.services/api/1/deliveries/create"
 
-	items := make([]structs.IikoOrderItem, 0, len(req.Products))
-	for _, p := range req.Products {
-		items = append(items, structs.IikoOrderItem{
-			ProductId: p.ID,
-			Amount:    float64(p.Quantity),
-		})
-	}
-
-	var iikoReq structs.IikoDeliveryCreateRequest
-	iikoReq.OrganizationId = organizationID
-	iikoReq.CreateOrderSettings.TransportToFrontTimeout = 300 // 5 min, docs'da default 600 bo'lishi mumkin
-
-	iikoReq.Order = structs.IikoOrder{
-		OrganizationId: organizationID,
-		OrderTypeId:    orderTypeID,
-		PaymentTypeId:  paymentTypeID,
-		Items:          items,
-	}
-
-	if req.DeliveryType == "delivery" && req.Address != nil {
-		iikoReq.Order.Comment = fmt.Sprintf("%s (lat: %.6f, lng: %.6f, distance: %.2f km)",
-			req.Address.Name, req.Address.Lat, req.Address.Lng, req.Address.DistanceKm)
-	}
-
-	do := func(tok string) (int, []byte, error) {
-		baseUrl := "https://api-ru.iiko.services/api/1/deliveries/create"
-
-		b, err := json.Marshal(iikoReq)
+	do := func(attempt string, tok string) (int, []byte, error) {
+		payload, err := json.Marshal(req)
 		if err != nil {
 			return 0, nil, err
 		}
 
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseUrl, bytes.NewReader(b))
+		// payload log (pretty) — debug uchun
+		if s.logger != nil {
+			pp, _ := json.MarshalIndent(req, "", "  ")
+			s.logger.Info(ctx, "IIKO create request payload",
+				zap.String("attempt", attempt),
+				zap.Int("payload_len", len(payload)),
+				zap.ByteString("payload", pp),
+			)
+		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(payload))
 		if err != nil {
 			return 0, nil, err
 		}
@@ -495,13 +484,32 @@ func (s *service) CreateOrder(ctx context.Context, req structs.CreateOrder) (str
 			return 0, nil, err
 		}
 		defer resp.Body.Close()
+
 		body, _ := io.ReadAll(resp.Body)
+
+		// correlationId ni hatto non-2xx bo‘lsa ham ajratib log qilamiz
+		var corr string
+		var tmp struct {
+			CorrelationId string `json:"correlationId"`
+		}
+		_ = json.Unmarshal(body, &tmp)
+		corr = tmp.CorrelationId
+
+		s.logger.Info(ctx, "IIKO create attempt finished",
+			zap.String("attempt", attempt),
+			zap.Int("status", resp.StatusCode),
+			zap.Duration("duration", time.Since(start)),
+			zap.Int("resp_body_len", len(body)),
+			zap.String("correlationId", corr),
+			zap.ByteString("resp_body", body),
+		)
 
 		return resp.StatusCode, body, nil
 	}
 
-	status, body, err := do(token)
+	status, body, err := do("first", token)
 	if err != nil {
+		s.logger.Error(ctx, "IIKO create first attempt failed", zap.Error(err))
 		return result, err
 	}
 
@@ -511,7 +519,7 @@ func (s *service) CreateOrder(ctx context.Context, req structs.CreateOrder) (str
 		if err != nil {
 			return result, fmt.Errorf("failed to refresh token after 401: %w", err)
 		}
-		status, body, err = do(tr.Token)
+		status, body, err = do("retry", tr.Token)
 		if err != nil {
 			return result, err
 		}
@@ -521,14 +529,39 @@ func (s *service) CreateOrder(ctx context.Context, req structs.CreateOrder) (str
 	}
 
 	if status < 200 || status >= 300 {
-		s.logger.Error(ctx, "CreateOrder non-2xx", zap.Int("status", status), zap.ByteString("body", body))
 		return result, fmt.Errorf("iiko deliveries/create returned %d: %s", status, string(body))
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		s.logger.Error(ctx, "CreateOrder: failed to unmarshal body", zap.Error(err), zap.ByteString("body", body))
+		s.logger.Error(ctx, "CreateOrder: unmarshal response failed", zap.Error(err), zap.ByteString("body", body))
 		return result, err
 	}
 
+	s.logger.Info(ctx, "IIKO create SUCCESS parsed",
+		zap.String("externalNumber", result.OrderInfo.ExternalNumber),
+		zap.String("iikoOrderId", result.OrderInfo.ID),
+		zap.String("posId", result.OrderInfo.PosID),
+		zap.String("creationStatus", result.OrderInfo.CreationStatus),
+		zap.String("correlationId", result.CorrelationId),
+	)
+
 	return result, nil
+}
+
+func normalizePhone(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", "\t", "").Replace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "+") {
+		return s
+	}
+	if strings.HasPrefix(s, "998") {
+		return "+" + s
+	}
+	if len(s) == 9 && strings.HasPrefix(s, "9") { // masalan 9xxxxxxxx
+		return "+998" + s
+	}
+	return s
 }

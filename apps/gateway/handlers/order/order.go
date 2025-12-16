@@ -206,7 +206,6 @@ func (h *handler) UpdateStatusOrder(c *gin.Context) {
 		response = responses.BadRequest
 		return
 	}
-
 	err = h.orderService.UpdateStatus(c, request)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {

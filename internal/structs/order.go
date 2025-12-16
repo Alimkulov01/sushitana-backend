@@ -114,6 +114,8 @@ type CreateOrder struct {
 	Comment        string         `json:"comment"`
 	IIKOOrderID    string         `json:"iikoOrderId"`
 	IIKODeliveryID string         `json:"iikDeliveryId"`
+	OrderNumber    int64          `json:"order_number"`
+	TotalPrice     int64          `json:"totalPrice"`
 }
 
 type GetListOrderRequest struct {
@@ -138,34 +140,58 @@ type UpdateStatus struct {
 	Status  string `json:"status"`
 }
 
-type IikoOrderItem struct {
-	ProductId string  `json:"productId"`
-	Amount    float64 `json:"amount"`
+type IikoCreateSettings struct {
+	TransportToFrontTimeout int  `json:"transportToFrontTimeout,omitempty"`
+	CheckStopList           bool `json:"checkStopList,omitempty"`
+}
+
+// Root request
+type IikoCreateDeliveryRequest struct {
+	OrganizationId      string              `json:"organizationId"`
+	TerminalGroupId     string              `json:"terminalGroupId"`
+	CreateOrderSettings *IikoCreateSettings `json:"createOrderSettings,omitempty"`
+	Order               IikoOrder           `json:"order"`
 }
 
 type IikoOrder struct {
-	OrganizationId string          `json:"organizationId"`
-	OrderTypeId    string          `json:"orderTypeId,omitempty"` // pickup/delivery turi
-	PaymentTypeId  string          `json:"paymentTypeId,omitempty"`
-	Phone          string          `json:"phone,omitempty"`
-	Comment        string          `json:"comment,omitempty"`
-	Items          []IikoOrderItem `json:"items"`
+	Phone          string `json:"phone"`
+	ExternalNumber string `json:"externalNumber,omitempty"`
+	OrderTypeId    string `json:"orderTypeId"`
+
+	Comment  string          `json:"comment,omitempty"`
+	Items    []IikoOrderItem `json:"items"`
+	Payments []IikoPayment   `json:"payments,omitempty"`
 }
 
-type IikoDeliveryCreateRequest struct {
-	OrganizationId      string `json:"organizationId"`
-	CreateOrderSettings struct {
-		TransportToFrontTimeout int32 `json:"transportToFrontTimeout"`
-	} `json:"createOrderSettings"`
-	Order IikoOrder `json:"order"`
+type IikoOrderItem struct {
+	Type      string  `json:"type"`      // "Product"
+	ProductId string  `json:"productId"` // iiko nomenclature GUID bo‘lishi kerak
+	Amount    float64 `json:"amount"`
 }
 
-type IikoDeliveryCreateResponse struct {
-	CorrelationId string `json:"correlationId"`
-	OrderInfo     struct {
-		Id             string  `json:"id"`
-		ExternalNumber string  `json:"externalNumber"`
-		FullSum        float64 `json:"fullSum"`
-		Status         string  `json:"status"`
-	} `json:"orderInfo"`
+type IikoPayment struct {
+	PaymentTypeId         string  `json:"paymentTypeId"`
+	PaymentTypeKind       string  `json:"paymentTypeKind"` // Cash / External / Card (iiko settingga bog‘liq)
+	Sum                   float64 `json:"sum"`
+	IsProcessedExternally bool    `json:"isProcessedExternally,omitempty"`
+}
+
+type IikoCreateDeliveryResponse struct {
+	CorrelationId string        `json:"correlationId"`
+	OrderInfo     IikoOrderInfo `json:"orderInfo"`
+}
+
+type IikoOrderInfo struct {
+	ID             string         `json:"id"`
+	PosID          string         `json:"posId"`
+	ExternalNumber string         `json:"externalNumber"`
+	OrganizationId string         `json:"organizationId"`
+	Timestamp      int64          `json:"timestamp"`
+	CreationStatus string         `json:"creationStatus"`
+	ErrorInfo      *IikoErrorInfo `json:"errorInfo"`
+}
+
+type IikoErrorInfo struct {
+	Code        string `json:"code,omitempty"`
+	Description string `json:"description,omitempty"`
 }

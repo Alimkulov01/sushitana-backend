@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"sushitana/internal/iiko"
@@ -235,7 +236,7 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 	paymentMethod := strings.ToUpper(cast.ToString(ord.Order.PaymentMethod))
 	paymentStatus := strings.ToUpper(cast.ToString(ord.Order.PaymentStatus))
 
-	if curStatus != "COOKING" {
+	if curStatus != "WAITING_OPERATOR" {
 		return fmt.Errorf("order is not ready for operator confirm (status=%s)", curStatus)
 	}
 	if paymentMethod == "CLICK" || paymentMethod == "PAYME" {
@@ -244,14 +245,19 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		}
 	}
 
-	iikoReq, err := buildCreateOrderForIiko(ord)
+	iikoReq, err := buildCreateOrderForIiko(ord) // <-- endi IikoCreateDeliveryRequest
 	if err != nil {
 		return err
 	}
 
-	_, err = s.iikoSvc.CreateOrder(ctx, iikoReq)
+	resp, err := s.iikoSvc.CreateOrder(ctx, iikoReq) // <-- IikoCreateDeliveryResponse
 	if err != nil {
 		s.logger.Error(ctx, "->iikoSvc.CreateOrder failed", zap.Error(err), zap.String("order_id", orderID))
+		return err
+	}
+
+	if err := s.orderRepo.UpdateIikoMeta(ctx, orderID, resp.OrderInfo.ID, resp.OrderInfo.PosID, resp.CorrelationId); err != nil {
+		s.logger.Error(ctx, "->orderRepo.UpdateIikoMeta failed", zap.Error(err), zap.String("order_id", orderID))
 		return err
 	}
 
@@ -265,7 +271,6 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 
 	return nil
 }
-
 func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error {
 	pStatus := strings.ToUpper(strings.TrimSpace(cast.ToString(req.Status)))
 
@@ -281,7 +286,7 @@ func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateSta
 	case "PAID":
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 			OrderId: req.OrderId,
-			Status:  "WAITING_OPERATOR",
+			Status:  "COOKING",
 		})
 	case "PENDING", "UNPAID":
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
@@ -333,14 +338,17 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 	req.Status = st
 
 	if st == "COOKING" {
-		return s.sendToIikoIfAllowed(ctx, req.OrderId)
+		if err := s.sendToIikoIfAllowed(ctx, req.OrderId); err != nil {
+			return err
+		}
+		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: req.OrderId, Status: "COOKING"}); err != nil {
+			s.logger.Error(ctx, "->orderRepo.UpdateStatus COOKING", zap.Error(err))
+			return err
+		}
+		return nil
 	}
 
-	if err := s.orderRepo.UpdateStatus(ctx, req); err != nil {
-		s.logger.Error(ctx, "->orderRepo.UpdateStatus", zap.Error(err))
-		return err
-	}
-	return nil
+	return s.orderRepo.UpdateStatus(ctx, req)
 }
 func BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string {
 	v := url.Values{}
@@ -354,46 +362,151 @@ func BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, order
 	return "https://my.click.uz/services/pay?" + v.Encode()
 }
 
-func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.CreateOrder, error) {
-	var req structs.CreateOrder
-	req.DeliveryType = cast.ToString(ord.Order.DeliveryType)
-	req.PaymentMethod = cast.ToString(ord.Order.PaymentMethod)
-	req.Address = &ord.Order.Address
-	req.Products = ord.Order.Products
-	return req, nil
-}
+func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.IikoCreateDeliveryRequest, error) {
+	organizationID := os.Getenv("IIKO_ORGANIZATION_ID")
+	terminalGroupID := os.Getenv("IIKO_TERMINAL_GROUP_ID")
+	deliveryOrderTypeID := os.Getenv("IIKO_DELIVERY_ORDER_TYPE_ID")
+	pickupOrderTypeID := os.Getenv("IIKO_PICKUP_ORDER_TYPE_ID")
 
+	paymentCashID := os.Getenv("IIKO_PAYMENT_CASH_ID")
+	paymentClickID := os.Getenv("IIKO_PAYMENT_CLICK_ID")
+	paymentPaymeID := os.Getenv("IIKO_PAYMENT_PAYME_ID")
+
+	if organizationID == "" || terminalGroupID == "" {
+		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("IIKO_ORGANIZATION_ID/IIKO_TERMINAL_GROUP_ID empty")
+	}
+
+	// orderTypeId
+	orderTypeID := ""
+	switch strings.ToUpper(ord.Order.DeliveryType) {
+	case "DELIVERY":
+		orderTypeID = deliveryOrderTypeID
+	case "PICKUP":
+		orderTypeID = pickupOrderTypeID
+	default:
+		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("unknown DeliveryType=%s", ord.Order.DeliveryType)
+	}
+	if orderTypeID == "" {
+		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("orderTypeId empty for DeliveryType=%s", ord.Order.DeliveryType)
+	}
+
+	// paymentTypeId
+	paymentTypeID := ""
+	switch strings.ToUpper(ord.Order.PaymentMethod) {
+	case "CASH":
+		paymentTypeID = paymentCashID
+	case "CLICK":
+		paymentTypeID = paymentClickID
+	case "PAYME":
+		paymentTypeID = paymentPaymeID
+	default:
+		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("unknown PaymentMethod=%s", ord.Order.PaymentMethod)
+	}
+	if paymentTypeID == "" {
+		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("paymentTypeId empty for PaymentMethod=%s", ord.Order.PaymentMethod)
+	}
+
+	// items
+	items := make([]structs.IikoOrderItem, 0, len(ord.Order.Products))
+	for _, p := range ord.Order.Products {
+		items = append(items, structs.IikoOrderItem{
+			Type:      "Product",
+			ProductId: p.ID,
+			Amount:    float64(p.Quantity),
+		})
+	}
+
+	// sum
+	sum := float64(ord.Order.TotalPrice)
+	if sum <= 0 {
+		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("totalPrice is 0; cannot build iiko payment sum")
+	}
+
+	// phone (GetByID response’da resp.Phone bor)
+	phone := ord.Phone
+	if phone == "" {
+		phone = ord.Order.Phone
+	}
+
+	// payment kind (sizning iiko’da "Cash" ishlayapti, shuni qoldiramiz)
+	paymentKind := "Cash"
+	processedExternally := false
+	if strings.ToUpper(ord.Order.PaymentMethod) == "CLICK" || strings.ToUpper(ord.Order.PaymentMethod) == "PAYME" {
+		paymentKind = "Card"
+		processedExternally = true
+	}
+
+	comment := strings.TrimSpace(ord.Order.Comment)
+	if strings.ToUpper(ord.Order.DeliveryType) == "DELIVERY" {
+		// address’ni commentga qo‘shib yuboring (kamida)
+		a := ord.Order.Address
+		if a.Name != "" {
+			if comment != "" {
+				comment += " | "
+			}
+			comment += fmt.Sprintf("%s (%.6f,%.6f, %.2fkm)", a.Name, a.Lat, a.Lng, a.DistanceKm)
+		}
+	}
+
+	return structs.IikoCreateDeliveryRequest{
+		OrganizationId:  organizationID,
+		TerminalGroupId: terminalGroupID,
+		CreateOrderSettings: &structs.IikoCreateSettings{
+			TransportToFrontTimeout: 300,
+			CheckStopList:           false,
+		},
+		Order: structs.IikoOrder{
+			Phone:          phone,
+			ExternalNumber: fmt.Sprintf("%d", ord.Order.OrderNumber),
+			OrderTypeId:    orderTypeID,
+			Comment:        comment,
+			Items:          items,
+			Payments: []structs.IikoPayment{
+				{
+					PaymentTypeId:         paymentTypeID,
+					PaymentTypeKind:       paymentKind,
+					Sum:                   sum,
+					IsProcessedExternally: processedExternally,
+				},
+			},
+		},
+	}, nil
+}
 func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookDeliveryOrderUpdate) error {
-	// iiko webhook payload misoli: eventType, eventTime, organizationId, correlationId, eventInfo{id,posId,externalNumber,timestamp,creationStatus,errorInfo,order{...}} :contentReference[oaicite:5]{index=5}
 	if strings.ToUpper(evt.EventType) != "DELIVERYORDERUPDATE" {
 		return nil
 	}
 
-	orderID := strings.TrimSpace(evt.EventInfo.ID)
-	if orderID == "" {
-		return fmt.Errorf("iiko webhook: empty eventInfo.id")
+	ext := strings.TrimSpace(evt.EventInfo.ExternalNumber)
+	if ext == "" {
+		return fmt.Errorf("iiko webhook: empty externalNumber")
 	}
 
+	num, err := strconv.ParseInt(ext, 10, 64)
+	if err != nil {
+		return fmt.Errorf("iiko webhook: bad externalNumber=%q: %w", ext, err)
+	}
+
+	ord, err := s.orderRepo.GetByOrderNumber(ctx, num)
+	if err != nil {
+		return err
+	}
+
+	// creationStatus
 	if strings.ToUpper(strings.TrimSpace(evt.EventInfo.CreationStatus)) != "SUCCESS" {
-		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-			OrderId: orderID,
-			Status:  "REJECTED",
-		})
+		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: "REJECTED"})
 		return nil
 	}
 
+	// iiko meta update (iiko id/posId ni saqlab qo‘yish)
+	_ = s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationID)
+
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
-	fmt.Println("extracy iiko order status", iikoStatus)
 	newStatus := mapIikoStatusToOurStatus(iikoStatus)
-	fmt.Println("map iiko status to our status", newStatus)
 	if newStatus == "" {
 		return nil
 	}
-
-	return s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-		OrderId: orderID,
-		Status:  newStatus,
-	})
+	return s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: newStatus})
 }
 
 func extractIikoOrderStatus(raw json.RawMessage) string {
