@@ -235,10 +235,9 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 	paymentMethod := strings.ToUpper(cast.ToString(ord.Order.PaymentMethod))
 	paymentStatus := strings.ToUpper(cast.ToString(ord.Order.PaymentStatus))
 
-	if curStatus != "WAITING_OPERATOR" {
+	if curStatus != "COOKING" {
 		return fmt.Errorf("order is not ready for operator confirm (status=%s)", curStatus)
 	}
-
 	if paymentMethod == "CLICK" || paymentMethod == "PAYME" {
 		if paymentStatus != "PAID" {
 			return fmt.Errorf("online order: payment not completed yet (paymentStatus=%s)", paymentStatus)

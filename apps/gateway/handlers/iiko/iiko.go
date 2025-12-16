@@ -100,10 +100,8 @@ func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
 		return
 	}
 
-	// 4) OrderService ichida status mapping/update qiling
 	if err := h.orderSvc.HandleIikoDeliveryOrderUpdate(ctx, req); err != nil {
 		h.logger.Error(ctx, "HandleIikoDeliveryOrderUpdate failed", zap.Error(err))
-		// 200 qaytarish — iiko retry behavior’ini boshqarish uchun qulay (logda ko‘rasiz)
 		response = responses.Success
 		return
 	}
