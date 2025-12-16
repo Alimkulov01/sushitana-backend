@@ -1,6 +1,7 @@
 package iiko
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -84,7 +85,7 @@ func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
 		response = responses.BadRequest
 		return
 	}
-
+	fmt.Println("GET IIKO ACCESS TOKEN", secret)
 	// 2) JSON parse
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn(ctx, "iiko webhook parse error", zap.Error(err))
@@ -93,6 +94,7 @@ func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
 	}
 
 	// 3) Bizga kerak bo‘lgan event: DeliveryOrderUpdate
+	fmt.Println(req.EventType)
 	if strings.ToUpper(strings.TrimSpace(req.EventType)) != "DELIVERYORDERUPDATE" {
 		response = responses.Success
 		return

@@ -366,7 +366,6 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Cre
 
 func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookDeliveryOrderUpdate) error {
 	// iiko webhook payload misoli: eventType, eventTime, organizationId, correlationId, eventInfo{id,posId,externalNumber,timestamp,creationStatus,errorInfo,order{...}} :contentReference[oaicite:5]{index=5}
-
 	if strings.ToUpper(evt.EventType) != "DELIVERYORDERUPDATE" {
 		return nil
 	}
@@ -385,7 +384,9 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 	}
 
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
+	fmt.Println("extracy iiko order status", iikoStatus)
 	newStatus := mapIikoStatusToOurStatus(iikoStatus)
+	fmt.Println("map iiko status to our status", newStatus)
 	if newStatus == "" {
 		return nil
 	}
