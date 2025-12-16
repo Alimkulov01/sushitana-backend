@@ -478,7 +478,7 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		zap.String("externalNumber", evt.EventInfo.ExternalNumber),
 		zap.String("creationStatus", evt.EventInfo.CreationStatus),
 	)
-	if strings.ToUpper(evt.EventType) != "DeliveryOrderUpdate" {
+	if strings.ToUpper(evt.EventType) != "DELIVERYORDERUPDATE" {
 		return nil
 	}
 
