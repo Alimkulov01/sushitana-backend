@@ -424,7 +424,8 @@ func (s *service) CreateOrder(ctx context.Context, req structs.CreateOrder) (str
 	pickupOrderTypeID = os.Getenv("IIKO_PICKUP_ORDER_TYPE_ID")
 
 	paymentCashID := os.Getenv("IIKO_PAYMENT_CASH_ID")
-	paymentOnlineID := os.Getenv("IIKO_PAYMENT_ONLINE_ID")
+	paymentClickID := os.Getenv("IIKO_PAYMENT_CLICK_ID")
+	paymentPaymeID := os.Getenv("IIKO_PAYMENT_PAYME_ID")
 
 	var orderTypeID string
 	switch req.DeliveryType {
@@ -440,8 +441,10 @@ func (s *service) CreateOrder(ctx context.Context, req structs.CreateOrder) (str
 	switch req.PaymentMethod {
 	case "cash":
 		paymentTypeID = paymentCashID
-	case "online":
-		paymentTypeID = paymentOnlineID
+	case "click":
+		paymentTypeID = paymentClickID
+	case "payme":
+		paymentTypeID = paymentPaymeID
 	default:
 		return result, fmt.Errorf("unknown paymentMethod: %s", req.PaymentMethod)
 	}
