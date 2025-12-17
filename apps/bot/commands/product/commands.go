@@ -492,9 +492,10 @@ func (c *Commands) ChangeQtyCallback(ctx *tgrouter.Ctx, delta int) {
 }
 
 func (c *Commands) AddToCartCallback(ctx *tgrouter.Ctx) {
-	u := ctx.Update()
-	cb := u.CallbackQuery
-	data := cb.Data
+	cb := ctx.Update().CallbackQuery
+	if cb == nil || cb.Message == nil {
+		return
+	}
 
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
@@ -503,37 +504,33 @@ func (c *Commands) AddToCartCallback(ctx *tgrouter.Ctx) {
 	}
 	lang := account.Language
 
-	parts := strings.SplitN(data, ":", 2)
-	if len(parts) != 2 {
-		c.logger.Error(ctx.Context, "invalid back_to_menu callback data", zap.String("data", data))
-		return
-	}
-	name := strings.TrimSpace(parts[1])
 	productID, qty, ok := parseAddToCart(cb.Data)
 	if !ok {
 		_ = c.answerCb(ctx, "")
 		return
 	}
-	err := c.CartSvc.Create(ctx.Context, structs.CreateCart{
+
+	if err := c.CartSvc.Create(ctx.Context, structs.CreateCart{
 		TGID:      account.TgID,
 		ProductID: productID,
 		Count:     int64(qty),
-	})
-	if err != nil {
+	}); err != nil {
 		c.logger.Error(ctx.Context, "failed to add to cart", zap.Error(err))
 		_ = c.answerCb(ctx, texts.Get(lang, texts.Retry))
 		return
 	}
 
-	_ = c.answerCb(ctx, "Savatga qo‘shildi")
-	_ = ctx.UpdateState("product_selected", map[string]string{
-		"last_action":   "show_products",
-		"category_name": name,
-	})
-
-	if _, err := ctx.Bot().Request(tgbotapi.NewCallback(cb.ID, "")); err != nil {
-		c.logger.Error(ctx.Context, "failed to answer callback", zap.Error(err))
+	// ✅ product card ichidagi "Назад" callback_data ni olib, listga qaytamiz
+	backCbData := findCallbackData(cb.Message, "back_to_menu:")
+	if backCbData == "" {
+		_ = c.answerCb(ctx, "✅ Savatga qo‘shildi")
+		return
 	}
+
+	old := cb.Data
+	cb.Data = backCbData
+	c.CategoryByProductMenuCallback(ctx) // bu yerda product message delete + product list send bor :contentReference[oaicite:4]{index=4}
+	cb.Data = old
 }
 func parseAddToCart(data string) (productID string, qty int, ok bool) {
 	if !strings.HasPrefix(data, "add_to_cart:") {
@@ -717,15 +714,19 @@ func (c *Commands) GetCartInfo(ctx *tgrouter.Ctx) {
 		return
 	}
 
-	text, inlineKB := c.buildCartView(lang, items)
+	fullText, inlineKB := c.buildCartView(lang, items)
+	info, body := splitCartText(lang, fullText)
 
-	// 1) Cart xabari (inline)
-	msg := tgbotapi.NewMessage(chatID, text)
+	// 1) инструкция alohida
+	_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, info))
+
+	// 2) корзина ro‘yxati + inline
+	msg := tgbotapi.NewMessage(chatID, body)
 	msg.ReplyMarkup = inlineKB
 	_, _ = ctx.Bot().Send(msg)
 
-	// 2) Pastdagi ReplyKeyboard (ko‘rinmas xabar bilan)
-	kbMsg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)) // yoki "Выберите действие:"
+	// 3) pastdagi reply keyboard (sizda avvaldan bor)
+	kbMsg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	kbMsg.ReplyMarkup = cartBottomKeyboard(lang)
 	_ = ctx.UpdateState("get_cart", map[string]string{"last_action": "get_cart_info"})
 	_, _ = ctx.Bot().Send(kbMsg)
@@ -997,4 +998,20 @@ func (c *Commands) tryClearCart(ctx context.Context, tgID int64) error {
 		return svc.Clear(ctx, tgID)
 	}
 	return errors.New("no cart clear method")
+}
+
+func splitCartText(lang utils.Lang, full string) (info string, body string) {
+	info = texts.Get(lang, texts.CartInfoMsg)
+
+	trimmed := strings.TrimSpace(full)
+	if strings.HasPrefix(trimmed, strings.TrimSpace(info)) {
+		body = strings.TrimSpace(strings.TrimPrefix(trimmed, strings.TrimSpace(info)))
+		if body == "" {
+			body = "🛒 " + texts.Get(lang, texts.Cart) + ":"
+		}
+		return info, body
+	}
+
+	// fallback: agar prefix mos kelmasa, hammasini bodyga beramiz
+	return info, trimmed
 }
