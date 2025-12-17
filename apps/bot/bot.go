@@ -76,16 +76,16 @@ func NewBot(p Params) error {
 
 		switch {
 		case strings.HasPrefix(data, "back_to_menu:"),
-			// 		strings.HasPrefix(data, "qty_inc:"),
-			// 		strings.HasPrefix(data, "qty_dec:"),
-			// 		strings.HasPrefix(data, "add_to_cart:"),
-			// 		strings.HasPrefix(data, "open_cart:"),
-			// 		strings.HasPrefix(data, "cart_inc:"),
-			// 		strings.HasPrefix(data, "cart_dec:"),
-			// 		strings.HasPrefix(data, "cart_del:"),
-			// 		strings.HasPrefix(data, "cart_clear:"),
-			// 		strings.HasPrefix(data, "cart_back:"),
-			// 		strings.HasPrefix(data, "noop:"),
+			strings.HasPrefix(data, "qty_inc:"),
+			strings.HasPrefix(data, "qty_dec:"),
+			strings.HasPrefix(data, "add_to_cart:"),
+			strings.HasPrefix(data, "open_cart:"),
+			strings.HasPrefix(data, "cart_inc:"),
+			strings.HasPrefix(data, "cart_dec:"),
+			strings.HasPrefix(data, "cart_del:"),
+			strings.HasPrefix(data, "cart_clear:"),
+			strings.HasPrefix(data, "cart_back:"),
+			strings.HasPrefix(data, "noop:"),
 			data == "noop":
 			p.ProductCmd.Callback(ctx)
 		}
