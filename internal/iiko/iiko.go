@@ -408,9 +408,10 @@ func (s *service) EnsureValidIikoToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
+// CreateOrder sends DELIVERY order to iiko (/api/1/deliveries/create).
+// IMPORTANT: This endpoint is for courier delivery. Address is mandatory.
 func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) {
 	var result structs.IikoCreateDeliveryResponse
-
 	start := time.Now()
 
 	token, err := s.EnsureValidIikoToken(ctx)
@@ -419,53 +420,21 @@ func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliver
 		return result, fmt.Errorf("EnsureValidIikoToken: %w", err)
 	}
 
-	if req.OrganizationId == "" || req.TerminalGroupId == "" {
-		return result, fmt.Errorf("iiko request missing organizationId/terminalGroupId")
-	}
-	req.Order.Phone = normalizePhone(req.Order.Phone)
-	if req.Order.Phone == "" {
-		return result, fmt.Errorf("iiko request missing order.phone")
-	}
-	if !strings.HasPrefix(req.Order.Phone, "+") {
-		return result, fmt.Errorf("iiko order.phone must start with '+': %q", req.Order.Phone)
-	}
-	if req.Order.OrderTypeId == "" {
-		return result, fmt.Errorf("iiko request missing order.orderTypeId")
-	}
-	if len(req.Order.Items) == 0 {
-		return result, fmt.Errorf("iiko request has empty order.items")
-	}
-	for i := range req.Order.Items {
-		if req.Order.Items[i].Type == "" {
-			req.Order.Items[i].Type = "Product"
-		}
+	// Validate + normalize request
+	if err := validateAndNormalizeIikoDeliveryCreate(&req); err != nil {
+		return result, err
 	}
 
-	// PaymentTypeKind normalize (Cash vs External)
-	// Cash -> "Cash", Click/Payme -> "External" + isProcessedExternally=true
-	for i := range req.Order.Payments {
-		p := &req.Order.Payments[i]
-		switch strings.ToUpper(p.PaymentTypeKind) {
-		case "CASH":
-			p.PaymentTypeKind = "Cash"
-		case "ONLINE":
-			p.PaymentTypeKind = "External"
-			if !p.IsProcessedExternally {
-				p.IsProcessedExternally = true
-			}
-		}
-	}
+	const baseURL = "https://api-ru.iiko.services/api/1/deliveries/create"
 
-	baseURL := "https://api-ru.iiko.services/api/1/deliveries/create"
-
-	do := func(attempt string, tok string) (int, []byte, error) {
+	do := func(attempt, tok string) (int, []byte, error) {
 		payload, err := json.Marshal(req)
 		if err != nil {
 			return 0, nil, err
 		}
 
-		// payload log (pretty) — debug uchun
 		if s.logger != nil {
+			// Avoid logging raw phone/address in prod if you prefer. For now keep as debug.
 			pp, _ := json.MarshalIndent(req, "", "  ")
 			s.logger.Info(ctx, "IIKO create request payload",
 				zap.String("attempt", attempt),
@@ -491,20 +460,18 @@ func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliver
 
 		body, _ := io.ReadAll(resp.Body)
 
-		// correlationId ni hatto non-2xx bo‘lsa ham ajratib log qilamiz
-		var corr string
+		// correlationId log even on non-2xx
 		var tmp struct {
 			CorrelationId string `json:"correlationId"`
 		}
 		_ = json.Unmarshal(body, &tmp)
-		corr = tmp.CorrelationId
 
 		s.logger.Info(ctx, "IIKO create attempt finished",
 			zap.String("attempt", attempt),
 			zap.Int("status", resp.StatusCode),
 			zap.Duration("duration", time.Since(start)),
 			zap.Int("resp_body_len", len(body)),
-			zap.String("correlationId", corr),
+			zap.String("correlationId", tmp.CorrelationId),
 			zap.ByteString("resp_body", body),
 		)
 
@@ -517,6 +484,7 @@ func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliver
 		return result, err
 	}
 
+	// Retry once on 401
 	if status == http.StatusUnauthorized {
 		s.logger.Info(ctx, "CreateOrder received 401; refreshing token and retrying")
 		tr, err := s.GetIikoAccessToken(ctx)
@@ -552,6 +520,105 @@ func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliver
 	return result, nil
 }
 
+func validateAndNormalizeIikoDeliveryCreate(req *structs.IikoCreateDeliveryRequest) error {
+	if req.OrganizationId == "" || req.TerminalGroupId == "" {
+		return fmt.Errorf("iiko request missing organizationId/terminalGroupId")
+	}
+
+	req.Order.Phone = normalizePhone(req.Order.Phone)
+	if req.Order.Phone == "" {
+		return fmt.Errorf("iiko request missing order.phone")
+	}
+	if !strings.HasPrefix(req.Order.Phone, "+") {
+		return fmt.Errorf("iiko order.phone must start with '+': %q", req.Order.Phone)
+	}
+
+	if req.Order.OrderTypeId == "" {
+		return fmt.Errorf("iiko request missing order.orderTypeId")
+	}
+
+	if len(req.Order.Items) == 0 {
+		return fmt.Errorf("iiko request has empty order.items")
+	}
+	for i := range req.Order.Items {
+		if req.Order.Items[i].Type == "" {
+			req.Order.Items[i].Type = "Product"
+		}
+	}
+
+	// DELIVERY endpoint => address is mandatory.
+	// If you have PICKUP orders, do NOT call deliveries/create for them.
+	if err := requireDeliveryAddress(req); err != nil {
+		return err
+	}
+
+	// PaymentTypeKind normalize (Cash vs External)
+	// Cash -> "Cash", Online (Click/Payme) -> "External" + isProcessedExternally=true
+	for i := range req.Order.Payments {
+		p := &req.Order.Payments[i]
+		switch strings.ToUpper(strings.TrimSpace(p.PaymentTypeKind)) {
+		case "", "CASH":
+			p.PaymentTypeKind = "Cash"
+		case "ONLINE":
+			p.PaymentTypeKind = "External"
+			if !p.IsProcessedExternally {
+				p.IsProcessedExternally = true
+			}
+		case "EXTERNAL":
+			p.PaymentTypeKind = "External"
+			if !p.IsProcessedExternally {
+				p.IsProcessedExternally = true
+			}
+		default:
+			// leave as-is
+		}
+	}
+
+	return nil
+}
+
+func requireDeliveryAddress(req *structs.IikoCreateDeliveryRequest) error {
+	// These fields must exist in your structs to compile:
+	// req.Order.DeliveryPoint (pointer)
+	// req.Order.DeliveryPoint.Address (pointer)
+	// req.Order.DeliveryPoint.Address.House (string)  // at least
+	// Optionally Street/City etc.
+	dp := req.Order.DeliveryPoint
+	if dp == nil {
+		return fmt.Errorf("iiko delivery requires order.deliveryPoint (nil)")
+	}
+	if dp.Address == nil {
+		return fmt.Errorf("iiko delivery requires order.deliveryPoint.address (nil)")
+	}
+
+	house := strings.TrimSpace(dp.Address.House)
+	if house == "" {
+		return fmt.Errorf("iiko delivery requires address.house")
+	}
+
+	// Minimal hygiene (optional but useful)
+	if dp.Comment != "" {
+		dp.Comment = strings.TrimSpace(dp.Comment)
+	}
+	if dp.Address.Flat != "" {
+		dp.Address.Flat = strings.TrimSpace(dp.Address.Flat)
+	}
+	if dp.Address.Entrance != "" {
+		dp.Address.Entrance = strings.TrimSpace(dp.Address.Entrance)
+	}
+	if dp.Address.Floor != "" {
+		dp.Address.Floor = strings.TrimSpace(dp.Address.Floor)
+	}
+	if dp.Address.Doorphone != "" {
+		dp.Address.Doorphone = strings.TrimSpace(dp.Address.Doorphone)
+	}
+
+	// Optional: if you have coordinates, ensure they are not zero if your iiko setup requires it.
+	// if dp.Coordinates != nil { ... }
+
+	return nil
+}
+
 func normalizePhone(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", "\t", "").Replace(s)
@@ -564,7 +631,7 @@ func normalizePhone(s string) string {
 	if strings.HasPrefix(s, "998") {
 		return "+" + s
 	}
-	if len(s) == 9 && strings.HasPrefix(s, "9") { // masalan 9xxxxxxxx
+	if len(s) == 9 && strings.HasPrefix(s, "9") { // 9xxxxxxxx
 		return "+998" + s
 	}
 	return s

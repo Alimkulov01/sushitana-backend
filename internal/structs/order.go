@@ -89,11 +89,23 @@ type GetListOrderByTgIDResponse struct {
 	Orders []Order `json:"orders"`
 }
 
+// Address is your local address model.
+// NOTE: iiko courier delivery requires structured address in deliveries/create.
+// Keep existing fields + add optional detailed parts (won't break old JSON).
 type Address struct {
 	Lat        float64 `json:"lat"`
 	Lng        float64 `json:"lng"`
-	Name       string  `json:"name"`
+	Name       string  `json:"name"` // full address text (legacy / UI)
 	DistanceKm float64 `json:"distanceKm"`
+
+	// Optional structured parts (recommended for iiko DELIVERY).
+	City      string `json:"city,omitempty"`
+	Street    string `json:"street,omitempty"`
+	House     string `json:"house,omitempty"`
+	Flat      string `json:"flat,omitempty"`
+	Entrance  string `json:"entrance,omitempty"`
+	Floor     string `json:"floor,omitempty"`
+	Doorphone string `json:"doorphone,omitempty"`
 }
 
 type OrderProduct struct {
@@ -145,7 +157,7 @@ type IikoCreateSettings struct {
 	CheckStopList           bool `json:"checkStopList,omitempty"`
 }
 
-// Root request
+// Root request (deliveries/create)
 type IikoCreateDeliveryRequest struct {
 	OrganizationId      string              `json:"organizationId"`
 	TerminalGroupId     string              `json:"terminalGroupId"`
@@ -158,20 +170,58 @@ type IikoOrder struct {
 	ExternalNumber string `json:"externalNumber,omitempty"`
 	OrderTypeId    string `json:"orderTypeId"`
 
-	Comment  string          `json:"comment,omitempty"`
+	Comment string `json:"comment,omitempty"`
+
+	// IMPORTANT for DELIVERY (courier):
+	// iikoFront will fail without deliveryPoint.address.
+	DeliveryPoint *IikoDeliveryPoint `json:"deliveryPoint,omitempty"`
+
 	Items    []IikoOrderItem `json:"items"`
 	Payments []IikoPayment   `json:"payments,omitempty"`
 }
 
+type IikoDeliveryPoint struct {
+	Coordinates *IikoCoordinates `json:"coordinates,omitempty"`
+	Address     *IikoAddress     `json:"address,omitempty"`
+	Comment     string           `json:"comment,omitempty"`
+}
+
+type IikoCoordinates struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+// Minimal structured address for iiko deliveries/create.
+// You can expand later if needed.
+type IikoAddress struct {
+	Street    *IikoStreet `json:"street,omitempty"`
+	House     string      `json:"house,omitempty"`
+	Building  string      `json:"building,omitempty"`
+	Flat      string      `json:"flat,omitempty"`
+	Entrance  string      `json:"entrance,omitempty"`
+	Floor     string      `json:"floor,omitempty"`
+	Doorphone string      `json:"doorphone,omitempty"`
+	Comment   string      `json:"comment,omitempty"`
+}
+
+type IikoStreet struct {
+	Name string    `json:"name,omitempty"`
+	City *IikoCity `json:"city,omitempty"`
+}
+
+type IikoCity struct {
+	Name string `json:"name,omitempty"`
+}
+
 type IikoOrderItem struct {
 	Type      string  `json:"type"`      // "Product"
-	ProductId string  `json:"productId"` // iiko nomenclature GUID bo‘lishi kerak
+	ProductId string  `json:"productId"` // iiko nomenclature GUID
 	Amount    float64 `json:"amount"`
 }
 
 type IikoPayment struct {
 	PaymentTypeId         string  `json:"paymentTypeId"`
-	PaymentTypeKind       string  `json:"paymentTypeKind"` // Cash / External / Card (iiko settingga bog‘liq)
+	PaymentTypeKind       string  `json:"paymentTypeKind"` // Cash / External / Card (depends on iiko settings)
 	Sum                   float64 `json:"sum"`
 	IsProcessedExternally bool    `json:"isProcessedExternally,omitempty"`
 }
