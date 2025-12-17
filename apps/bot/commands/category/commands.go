@@ -43,6 +43,7 @@ func New(p Params) Commands {
 	}
 }
 
+
 func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
 		return
