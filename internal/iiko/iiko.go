@@ -408,6 +408,7 @@ func (s *service) EnsureValidIikoToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
+
 // CreateOrder sends DELIVERY order to iiko (/api/1/deliveries/create).
 // IMPORTANT: This endpoint is for courier delivery. Address is mandatory.
 func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) {

@@ -60,7 +60,7 @@ const (
 type Order struct {
 	ID             string         `json:"id"`
 	TgID           int64          `json:"tgId"`
-	Address        Address        `json:"address"`
+	Address        *Address       `json:"address"`
 	DeliveryType   string         `json:"deliveryType"`
 	PaymentMethod  string         `json:"paymentMethod"`
 	PaymentStatus  string         `json:"paymentStatus"`
