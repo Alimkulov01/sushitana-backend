@@ -165,7 +165,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	})
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get categories", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
 
@@ -196,7 +196,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	msg.ReplyMarkup = keyboard
-	ctx.Bot().Send(msg)
+	_, _ = ctx.Bot().Send(msg)
 
 	_ = ctx.UpdateState("category_selected", map[string]string{
 		"last_action": "show_category",
@@ -223,7 +223,7 @@ func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 	products, err := c.ProductSvc.GetListCategoryName(ctx.Context, text)
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get products", zap.Error(err))
-		ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
 
@@ -254,7 +254,7 @@ func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	msg.ReplyMarkup = keyboard
 
-	ctx.Bot().Send(msg)
+	_, _ = ctx.Bot().Send(msg)
 	_ = ctx.UpdateState("product_selected", map[string]string{
 		"last_action":   "show_products",
 		"category_name": text,
@@ -271,6 +271,10 @@ func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 	lang := account.Language
+	if text == texts.Get(lang, texts.Cart) {
+		c.GetCartInfo(ctx)
+		return
+	}
 	if text == texts.Get(lang, texts.BackButton) {
 		c.logger.Info(ctx.Context, "back to category menu")
 		_ = ctx.UpdateState("category_selected", map[string]string{
@@ -386,6 +390,7 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 		_, _ = ctx.Bot().Send(msg)
 	}
 }
+
 func (c *Commands) Callback(ctx *tgrouter.Ctx) {
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
@@ -432,6 +437,7 @@ func (c *Commands) Callback(ctx *tgrouter.Ctx) {
 		_ = c.answerCb(ctx, "")
 	}
 }
+
 func (c *Commands) answerCb(ctx *tgrouter.Ctx, text string) error {
 	cb := ctx.Update().CallbackQuery
 	if cb == nil {
@@ -447,7 +453,7 @@ func (c *Commands) OpenCartCallback(ctx *tgrouter.Ctx) {
 		return
 	}
 	_ = c.answerCb(ctx, "")
-	c.GetCartInfo(ctx) // ✅ yangi cart message yuboradi
+	c.GetCartInfo(ctx)
 }
 
 func (c *Commands) ChangeQtyCallback(ctx *tgrouter.Ctx, delta int) {
@@ -475,13 +481,7 @@ func (c *Commands) ChangeQtyCallback(ctx *tgrouter.Ctx, delta int) {
 		qty = 1
 	}
 
-	// Back tugmasining eski callback_data sini saqlab qolamiz
-	backCbData := findCallbackData(cb.Message, "back_to_menu:")
-	if backCbData == "" {
-		backCbData = "noop" // fallback
-	}
-
-	markup := buildProductInlineKeyboard(lang, productID, qty, backCbData)
+	markup := buildProductInlineKeyboard(lang, productID, qty)
 
 	edit := tgbotapi.NewEditMessageReplyMarkup(cb.Message.Chat.ID, cb.Message.MessageID, markup)
 	if _, err := ctx.Bot().Request(edit); err != nil {
@@ -520,7 +520,6 @@ func (c *Commands) AddToCartCallback(ctx *tgrouter.Ctx) {
 		return
 	}
 
-	// ✅ product card ichidagi "Назад" callback_data ni olib, listga qaytamiz
 	backCbData := findCallbackData(cb.Message, "back_to_menu:")
 	if backCbData == "" {
 		_ = c.answerCb(ctx, "✅ Savatga qo‘shildi")
@@ -529,14 +528,37 @@ func (c *Commands) AddToCartCallback(ctx *tgrouter.Ctx) {
 
 	old := cb.Data
 	cb.Data = backCbData
-	c.CategoryByProductMenuCallback(ctx) // bu yerda product message delete + product list send bor :contentReference[oaicite:4]{index=4}
+	c.CategoryByProductMenuCallback(ctx)
 	cb.Data = old
 }
+func parseCartQty(data string, delta int64) (productID string, curQty int64, ok bool) {
+	prefix := "cart_dec:"
+	if delta > 0 {
+		prefix = "cart_inc:"
+	}
+	if !strings.HasPrefix(data, prefix) {
+		return "", 0, false
+	}
+
+	rest := strings.TrimPrefix(data, prefix)
+	parts := strings.SplitN(rest, "|", 2)
+	if len(parts) != 2 {
+		return "", 0, false
+	}
+
+	productID = strings.TrimSpace(parts[0])
+	n, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil || n < 1 {
+		n = 1
+	}
+	return productID, n, true
+}
+
 func parseAddToCart(data string) (productID string, qty int, ok bool) {
 	if !strings.HasPrefix(data, "add_to_cart:") {
 		return "", 0, false
 	}
-	rest := strings.TrimPrefix(data, "add_to_cart:") // <uuid>|<qty>
+	rest := strings.TrimPrefix(data, "add_to_cart:")
 	parts := strings.SplitN(rest, "|", 2)
 	if len(parts) != 2 {
 		return "", 0, false
@@ -558,7 +580,7 @@ func parseProductQty(data string, delta int) (productID string, qty int, ok bool
 		return "", 0, false
 	}
 
-	rest := strings.TrimPrefix(data, prefix) // <uuid>|<qty>
+	rest := strings.TrimPrefix(data, prefix)
 	parts := strings.SplitN(rest, "|", 2)
 	if len(parts) != 2 {
 		return "", 0, false
@@ -623,7 +645,15 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 
 	var keyboardRows [][]tgbotapi.KeyboardButton
 	var row []tgbotapi.KeyboardButton
-
+	cartTotal := c.getCartTotalCount(ctx, account.TgID)
+	if cartTotal > 0 {
+		cartText := texts.Get(lang, texts.Cart)
+		keyboardRows = append(keyboardRows,
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton(cartText),
+			),
+		)
+	}
 	for _, prod := range products {
 		prodName := getProductNameByLang(lang, prod.Name)
 		btn := tgbotapi.NewKeyboardButton(prodName)
@@ -660,13 +690,12 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 	}
 }
 
-func buildProductInlineKeyboard(lang utils.Lang, productID string, qty int, backCbData string) tgbotapi.InlineKeyboardMarkup {
+func buildProductInlineKeyboard(lang utils.Lang, productID string, qty int) tgbotapi.InlineKeyboardMarkup {
 	decData := fmt.Sprintf("qty_dec:%s|%d", productID, qty)
 	incData := fmt.Sprintf("qty_inc:%s|%d", productID, qty)
 	addData := fmt.Sprintf("add_to_cart:%s|%d", productID, qty)
 
 	addText := texts.Get(lang, texts.AddToCart)
-	backText := texts.Get(lang, texts.BackButton)
 
 	rowQty := tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("➖", decData),
@@ -677,17 +706,11 @@ func buildProductInlineKeyboard(lang utils.Lang, productID string, qty int, back
 	rowAdd := tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData(addText, addData),
 	)
-
-	rowBack := tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData(backText, backCbData),
-	)
-
-	return tgbotapi.NewInlineKeyboardMarkup(rowQty, rowAdd, rowBack)
+	return tgbotapi.NewInlineKeyboardMarkup(rowQty, rowAdd)
 }
 
 func (c *Commands) getCartTotalCount(ctx *tgrouter.Ctx, tgID int64) int64 {
-
-	items, err := c.CartSvc.GetByUserTgID(ctx.Context, tgID) // <-- shu joyni moslang
+	items, err := c.CartSvc.GetByUserTgID(ctx.Context, tgID)
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get cart list", zap.Error(err))
 		return 0
@@ -699,6 +722,7 @@ func (c *Commands) getCartTotalCount(ctx *tgrouter.Ctx, tgID int64) int64 {
 	}
 	return total
 }
+
 func (c *Commands) GetCartInfo(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
 
@@ -717,21 +741,23 @@ func (c *Commands) GetCartInfo(ctx *tgrouter.Ctx) {
 	fullText, inlineKB := c.buildCartView(lang, items)
 	info, body := splitCartText(lang, fullText)
 
-	// 1) инструкция alohida
-	_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, info))
+	sentInfo, _ := ctx.Bot().Send(tgbotapi.NewMessage(chatID, info))
 
-	// 2) корзина ro‘yxati + inline
 	msg := tgbotapi.NewMessage(chatID, body)
 	msg.ReplyMarkup = inlineKB
-	_, _ = ctx.Bot().Send(msg)
+	sentCart, _ := ctx.Bot().Send(msg)
 
-	// 3) pastdagi reply keyboard (sizda avvaldan bor)
 	kbMsg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	kbMsg.ReplyMarkup = cartBottomKeyboard(lang)
-	_ = ctx.UpdateState("get_cart", map[string]string{"last_action": "get_cart_info"})
-	_, _ = ctx.Bot().Send(kbMsg)
-}
+	sentKb, _ := ctx.Bot().Send(kbMsg)
 
+	_ = ctx.UpdateState("get_cart", map[string]string{
+		"last_action":      "get_cart_info",
+		"cart_info_msg_id": strconv.Itoa(sentInfo.MessageID),
+		"cart_msg_id":      strconv.Itoa(sentCart.MessageID),
+		"cart_kb_msg_id":   strconv.Itoa(sentKb.MessageID),
+	})
+}
 func (c *Commands) GetCartInfoHandler(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
 		return
@@ -746,17 +772,25 @@ func (c *Commands) GetCartInfoHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 	lang := account.Language
+
 	switch text {
 	case texts.Get(lang, texts.BackButton):
+		c.deleteCartUIMessages(ctx, chatID)
+
 		_ = ctx.UpdateState("show_main_menu", nil)
 		c.ShowMainMenu(ctx)
+
 	case texts.Get(lang, texts.CartClear):
+		c.deleteCartUIMessages(ctx, chatID)
+
 		_ = ctx.UpdateState("show_main_menu", nil)
 		_ = c.tryClearCart(ctx.Context, account.TgID)
 		c.ShowMainMenu(ctx)
+
 	case texts.Get(lang, texts.CartConfirm):
 		_ = ctx.UpdateState("show_type_order", map[string]string{"last_action": "show_main_menu"})
 		c.MenuCategoryHandler(ctx)
+
 	default:
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu)))
 	}
@@ -766,8 +800,7 @@ func (c *Commands) buildCartView(lang utils.Lang, items structs.GetCartByTgID) (
 	cur := texts.Get(lang, texts.CurrencySymbol)
 
 	var b strings.Builder
-	b.WriteString(texts.Get(lang, texts.CartInfoMsg))
-	b.WriteString("\n🛒 " + texts.Get(lang, texts.Cart) + ":\n\n")
+	b.WriteString("\n " + texts.Get(lang, texts.Cart) + ":\n\n")
 
 	products := items.Cart.Products
 	if len(products) == 0 {
@@ -783,17 +816,11 @@ func (c *Commands) buildCartView(lang utils.Lang, items structs.GetCartByTgID) (
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 
-	// top: clear
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData(texts.Get(lang, texts.CartClear), "cart_clear:"),
-	))
-
-	// list + buttons
 	for i, it := range products {
 		name := getProductNameByLang(lang, it.Name)
 
-		unit := cast.ToInt64(it.Price)  // numeric -> int64
-		count := cast.ToInt64(it.Count) // count -> int64
+		unit := cast.ToInt64(it.Price)
+		count := cast.ToInt64(it.Count)
 		if count < 1 {
 			count = 1
 		}
@@ -807,26 +834,19 @@ func (c *Commands) buildCartView(lang utils.Lang, items structs.GetCartByTgID) (
 			cur,
 		)
 
-		// ❌ delete row
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d. %s ❌", i+1, name), "cart_del:"+it.Id),
 		))
 
-		// ➖ qty + ➕
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("➖", "cart_dec:"+it.Id),
-			tgbotapi.NewInlineKeyboardButtonData(strconv.FormatInt(count, 10), "noop:"),
-			tgbotapi.NewInlineKeyboardButtonData("➕", "cart_inc:"+it.Id),
+			tgbotapi.NewInlineKeyboardButtonData("➖", fmt.Sprintf("cart_dec:%s|%d", it.Id, count)),
+			tgbotapi.NewInlineKeyboardButtonData(strconv.FormatInt(count, 10), "noop"),
+			tgbotapi.NewInlineKeyboardButtonData("➕", fmt.Sprintf("cart_inc:%s|%d", it.Id, count)),
 		))
 	}
 
 	total := cast.ToInt64(items.Cart.TotalPrice)
 	fmt.Fprintf(&b, "🧾 %s: %s %s", texts.Get(lang, texts.CartTotal), utils.FCurrency(float64(total)), cur)
-
-	// bottom: back
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData(texts.Get(lang, texts.BackButton), "cart_back:"),
-	))
 
 	return b.String(), tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
@@ -842,33 +862,43 @@ func (c *Commands) CartQtyChangeCallback(ctx *tgrouter.Ctx, delta int64) {
 		return
 	}
 
-	var productID string
-	if delta > 0 {
-		productID = strings.TrimPrefix(cb.Data, "cart_inc:")
-	} else {
-		productID = strings.TrimPrefix(cb.Data, "cart_dec:")
-	}
-	productID = strings.TrimSpace(productID)
-	if productID == "" {
+	productID, _, ok := parseCartQty(cb.Data, delta)
+	if !ok || strings.TrimSpace(productID) == "" {
 		_ = c.answerCb(ctx, "")
 		return
 	}
 
-	// ✅ bu yerda sizning Cart service update methodingiz bo‘lishi kerak:
-	// - increment/decrement qilish
-	// Hozircha skeleton: agar service'da method bo'lmasa, oddiy xabar chiqaradi.
-	if err := c.tryChangeCartCount(ctx.Context, account.TgID, productID, delta); err != nil {
+	// 1) DB update (upsert + increment/decrement)
+	if err := c.CartSvc.Create(ctx.Context, structs.CreateCart{
+		TGID:      account.TgID,
+		ProductID: strings.TrimSpace(productID),
+		Count:     delta, // +1 yoki -1
+	}); err != nil {
 		_ = c.answerCb(ctx, "Cart update yo‘q")
 		return
 	}
 
 	_ = c.answerCb(ctx, "")
-	c.refreshCartMessage(ctx, cb.Message.Chat.ID, cb.Message.MessageID, account.TgID, account.Language)
+
+	items, err := c.CartSvc.GetByUserTgID(ctx.Context, account.TgID)
+	if err != nil {
+		return
+	}
+
+	if len(items.Cart.Products) == 0 {
+		_ = c.deleteMessage(ctx, cb.Message.Chat.ID, cb.Message.MessageID)
+		c.ShowMainMenu(ctx)
+		return
+	}
+
+	text, kb := c.buildCartView(account.Language, items)
+	edit := tgbotapi.NewEditMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text)
+	edit.ReplyMarkup = &kb
+	_, _ = ctx.Bot().Request(edit)
 }
 
 func cartBottomKeyboard(lang utils.Lang) tgbotapi.ReplyKeyboardMarkup {
 	back := texts.Get(lang, texts.BackButton)
-
 	clear := texts.Get(lang, texts.CartClear)
 	confirm := texts.Get(lang, texts.CartConfirm)
 
@@ -909,6 +939,16 @@ func (c *Commands) CartDeleteCallback(ctx *tgrouter.Ctx) {
 	}
 
 	_ = c.answerCb(ctx, "")
+
+	items, err := c.CartSvc.GetByUserTgID(ctx.Context, account.TgID)
+	if err == nil && len(items.Cart.Products) == 0 {
+		_ = c.deleteMessage(ctx, cb.Message.Chat.ID, cb.Message.MessageID)
+		c.deleteCartUIMessages(ctx, cb.Message.Chat.ID)
+
+		c.ShowMainMenu(ctx)
+		return
+	}
+
 	c.refreshCartMessage(ctx, cb.Message.Chat.ID, cb.Message.MessageID, account.TgID, account.Language)
 }
 
@@ -939,8 +979,38 @@ func (c *Commands) CartBackCallback(ctx *tgrouter.Ctx) {
 	}
 
 	_ = c.answerCb(ctx, "")
-	// cart message'ni o‘chirib, main menu ko‘rsatamiz
-	_, _ = ctx.Bot().Request(tgbotapi.NewDeleteMessage(cb.Message.Chat.ID, cb.Message.MessageID))
+
+	chatID := cb.Message.Chat.ID
+
+	_, data, _ := ctx.GetState()
+
+	if data != nil {
+		if idStr := strings.TrimSpace(data["cart_info_msg_id"]); idStr != "" {
+			if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+				_ = c.deleteMessage(ctx, chatID, id)
+			}
+		}
+
+		if idStr := strings.TrimSpace(data["cart_kb_msg_id"]); idStr != "" {
+			if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+				_ = c.deleteMessage(ctx, chatID, id)
+			}
+		}
+
+		if idStr := strings.TrimSpace(data["cart_msg_id"]); idStr != "" {
+			if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+				_ = c.deleteMessage(ctx, chatID, id)
+			}
+		}
+	}
+
+	_ = ctx.UpdateState("show_main_menu", map[string]string{
+		"last_action":      "show_main_menu",
+		"cart_info_msg_id": "",
+		"cart_msg_id":      "",
+		"cart_kb_msg_id":   "",
+	})
+
 	c.ShowMainMenu(ctx)
 }
 
@@ -958,36 +1028,41 @@ func (c *Commands) refreshCartMessage(ctx *tgrouter.Ctx, chatID int64, msgID int
 	_, _ = ctx.Bot().Request(edit)
 }
 
-func (c *Commands) tryChangeCartCount(ctx context.Context, tgID int64, productID string, delta int64) error {
-	// Variant 1 (eng yaxshi): cart service’da shunaqa method bo‘lsin:
-	// ChangeCount(ctx, tgID, productID, delta)
-	type changer interface {
-		ChangeCount(ctx context.Context, tgID int64, productID string, delta int64) error
-	}
-	if svc, ok := any(c.CartSvc).(changer); ok {
-		return svc.ChangeCount(ctx, tgID, productID, delta)
+func (c *Commands) deleteMessage(ctx *tgrouter.Ctx, chatID int64, msgID int) error {
+	del := tgbotapi.NewDeleteMessage(chatID, msgID)
+	_, err := ctx.Bot().Request(del)
+	return err
+}
+
+func (c *Commands) deleteCartUIMessages(ctx *tgrouter.Ctx, chatID int64) {
+	_, data, err := ctx.GetState()
+	if err != nil || data == nil {
+		return
 	}
 
-	// Variant 2: inc uchun Create ishlatish mumkin (delta=+1)
-	if delta > 0 {
-		return c.CartSvc.Create(ctx, structs.CreateCart{
-			TGID:      tgID,
-			ProductID: productID,
-			Count:     1,
-		})
+	for _, key := range []string{"cart_info_msg_id", "cart_msg_id", "cart_kb_msg_id"} {
+		idStr := strings.TrimSpace(data[key])
+		if idStr == "" {
+			continue
+		}
+		id, err := strconv.Atoi(idStr)
+		if err != nil || id <= 0 {
+			continue
+		}
+		_ = c.deleteMessage(ctx, chatID, id)
 	}
-
-	return errors.New("no cart change method")
 }
 
 func (c *Commands) tryDeleteCartItem(ctx context.Context, tgID int64, productID string) error {
-	type deleter interface {
-		DeleteItem(ctx context.Context, tgID int64, productID string) error
+	err := c.CartSvc.Delete(ctx, structs.DeleteCart{
+		TGID:      tgID,
+		ProductID: productID,
+	})
+	if err != nil {
+		c.logger.Error(ctx, "failed to delete cart product id", zap.Error(err))
+		return err
 	}
-	if svc, ok := any(c.CartSvc).(deleter); ok {
-		return svc.DeleteItem(ctx, tgID, productID)
-	}
-	return errors.New("no cart delete method")
+	return nil
 }
 
 func (c *Commands) tryClearCart(ctx context.Context, tgID int64) error {
@@ -1012,6 +1087,5 @@ func splitCartText(lang utils.Lang, full string) (info string, body string) {
 		return info, body
 	}
 
-	// fallback: agar prefix mos kelmasa, hammasini bodyga beramiz
 	return info, trimmed
 }

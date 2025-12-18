@@ -381,7 +381,6 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(btnText),
 		))
 	}
-
 	rows = append(rows,
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.FeedbackButton)),

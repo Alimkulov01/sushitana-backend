@@ -35,6 +35,9 @@ const (
 	CartTotal             TextKey = "cart_total"
 	CartConfirm           TextKey = "cart_confirm"
 	CartEmpty             TextKey = "cart_empty"
+	CartItemDeleteHint    TextKey = "cart_item_delete_hint"
+	CartQtyHint           TextKey = "cart_qty_hint"
+	CartClearHint         TextKey = "cart_clear_hint"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -226,6 +229,21 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "Savatga qo‘shildi",
 		RU: "Добавлено в корзину",
 		EN: "Added to cart",
+	},
+	CartItemDeleteHint: {
+		UZ: "Mahsulot nomi — savatdan o‘chirish",
+		RU: "Название товара — удалить из корзины",
+		EN: "Product name — remove from cart",
+	},
+	CartQtyHint: {
+		UZ: "➖ va ➕ — miqdorni kamaytirish yoki oshirish",
+		RU: "➖ и ➕ — уменьшить или увеличить количество товара",
+		EN: "➖ and ➕ — decrease or increase quantity",
+	},
+	CartClearHint: {
+		UZ: "🔄 Savatni tozalash",
+		RU: "🔄 Очистить корзину",
+		EN: "🔄 Clear cart",
 	},
 }
 

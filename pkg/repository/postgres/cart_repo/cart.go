@@ -46,21 +46,31 @@ func New(p Params) Repo {
 		db:     p.DB,
 	}
 }
-
 func (r repo) Create(ctx context.Context, req structs.CreateCart) error {
 	r.logger.Info(ctx, "Create cart (upsert)", zap.Any("req", req))
 
 	const upsertQuery = `
-        INSERT INTO carts (tgid, product_id, count)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (tgid, product_id)
-        DO UPDATE SET count = EXCLUDED.count
-    `
+		INSERT INTO carts (tgid, product_id, count)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (tgid, product_id)
+		DO UPDATE SET count = carts.count + EXCLUDED.count
+	`
 
 	if _, err := r.db.Exec(ctx, upsertQuery, req.TGID, req.ProductID, req.Count); err != nil {
 		r.logger.Error(ctx, "failed to upsert cart", zap.Error(err))
 		return err
 	}
+
+	// agar minus bosilganda 0 yoki manfiy bo'lib qolsa — rowni o'chiramiz
+	const cleanupQuery = `
+		DELETE FROM carts
+		WHERE tgid = $1 AND product_id = $2 AND count <= 0
+	`
+	if _, err := r.db.Exec(ctx, cleanupQuery, req.TGID, req.ProductID); err != nil {
+		r.logger.Error(ctx, "failed to cleanup cart", zap.Error(err))
+		return err
+	}
+
 	return nil
 }
 
@@ -104,7 +114,6 @@ func (r repo) Patch(ctx context.Context, req structs.PatchCart) (int64, error) {
 		setValues = append(setValues, "count = :count")
 		params["count"] = *req.Count
 	}
-	setValues = append(setValues, "updated_At = NOW()")
 	if len(setValues) == 0 {
 		return 0, fmt.Errorf("no fields to update for cart with ID %d", *req.TGID)
 	}
