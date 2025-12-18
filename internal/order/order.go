@@ -412,13 +412,21 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 
 	// paymentTypeId
 	paymentTypeID := ""
+	paymentKind := ""
+	processedExternally := false
 	switch paymentMethod {
 	case "CASH":
+		paymentKind = "CASH"
 		paymentTypeID = paymentCashID
 	case "CLICK":
+		paymentKind = "Card"
+		processedExternally = true
 		paymentTypeID = paymentClickID
 	case "PAYME":
+		paymentKind = "Card"
+		processedExternally = true
 		paymentTypeID = paymentPaymeID
+
 	default:
 		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("unknown PaymentMethod=%s", ord.Order.PaymentMethod)
 	}
@@ -437,7 +445,7 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 	}
 
 	// sum
-	sum := float64(ord.Order.TotalPrice)
+	sum := float64(ord.Order.OrderPriceForIIKO)
 	if sum <= 0 {
 		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("totalPrice is 0; cannot build iiko payment sum")
 	}
@@ -448,18 +456,8 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		phone = ord.Order.Phone
 	}
 
-	// PaymentTypeKind: CreateOrder() ichida normalize qilasiz
-	// Cash uchun CASH, online uchun ONLINE bering.
-	paymentKind := "CASH"
-	processedExternally := false
-	if paymentMethod == "CLICK" || paymentMethod == "PAYME" {
-		paymentKind = "ONLINE"
-		processedExternally = true
-	}
-
 	comment := strings.TrimSpace(ord.Order.Comment)
 
-	// 1) avval iikoOrder ni yasab olamiz
 	iikoOrder := structs.IikoOrder{
 		Phone:          phone,
 		ExternalNumber: fmt.Sprintf("%d", ord.Order.OrderNumber),

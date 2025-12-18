@@ -285,6 +285,7 @@ func (r repo) GetByID(ctx context.Context, id string) (resp structs.GetListPrima
 	}
 	order.TotalCount = totalItems
 	order.TotalPrice = orderTotal + order.DeliveryPrice
+	order.OrderPriceForIIKO = orderTotal
 
 	r.logger.Info(ctx, "order retrieved", zap.String("id", id))
 	resp.Order = order
