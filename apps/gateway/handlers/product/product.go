@@ -29,6 +29,7 @@ type (
 		GetByIDProduct(c *gin.Context)
 		DeleteProduct(c *gin.Context)
 		PatchProduct(c *gin.Context)
+		GetBox(c *gin.Context)
 	}
 	Params struct {
 		fx.In
@@ -142,6 +143,28 @@ func (h *handler) GetListProduct(c *gin.Context) {
 			return
 		}
 		h.logger.Error(ctx, " err on h.productService.GetList", zap.Error(err))
+		response = responses.InternalErr
+		return
+	}
+
+	response = responses.Success
+	response.Payload = list
+}
+func (h *handler) GetBox(c *gin.Context) {
+	var (
+		response structs.Response
+		ctx      = c.Request.Context()
+	)
+
+	defer reply.Json(c.Writer, http.StatusOK, &response)
+
+	list, err := h.productService.GetBox(c)
+	if err != nil {
+		if errors.Is(err, structs.ErrNotFound) {
+			response = responses.NotFound
+			return
+		}
+		h.logger.Error(ctx, " err on h.productService.GetBox", zap.Error(err))
 		response = responses.InternalErr
 		return
 	}

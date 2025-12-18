@@ -30,6 +30,7 @@ type (
 		GetByProductName(ctx context.Context, name string) (structs.Product, error)
 		Patch(ctx context.Context, req structs.PatchProduct) (int64, error)
 		GetListCategoryName(ctx context.Context, req string) (resp []structs.Product, err error)
+		GetBox(ctx context.Context) (resp structs.GetListProductResponse, err error)
 	}
 	service struct {
 		productRepo productRepo.Repo
@@ -114,6 +115,18 @@ func (s service) GetByID(ctx context.Context, id string) (resp structs.Product, 
 		}
 		s.logger.Error(ctx, " err on s.productRepo.GetByID", zap.Error(err))
 		return structs.Product{}, err
+	}
+	return resp, err
+}
+
+func (s service) GetBox(ctx context.Context) (resp structs.GetListProductResponse, err error) {
+	resp, err = s.productRepo.GetBox(ctx)
+	if err != nil {
+		if errors.Is(err, structs.ErrNotFound) {
+			return structs.GetListProductResponse{}, err
+		}
+		s.logger.Error(ctx, " err on s.productRepo.GetBox", zap.Error(err))
+		return structs.GetListProductResponse{}, err
 	}
 	return resp, err
 }

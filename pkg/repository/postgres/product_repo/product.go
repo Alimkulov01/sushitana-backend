@@ -34,6 +34,7 @@ type (
 		Delete(ctx context.Context, ProductID string) error
 		Patch(ctx context.Context, req structs.PatchProduct) (int64, error)
 		GetListCategoryName(ctx context.Context, req string) ([]structs.Product, error)
+		GetBox(ctx context.Context) (resp structs.GetListProductResponse, err error)
 	}
 
 	repo struct {
@@ -732,4 +733,95 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 		return resp, fmt.Errorf("rows iteration failed: %w", rows.Err())
 	}
 	return list, nil
+}
+
+func (r *repo) GetBox(ctx context.Context) (resp structs.GetListProductResponse, err error) {
+	query := `
+		SELECT
+			COUNT(*) OVER(),
+			id,
+			group_id,
+			name,
+			COALESCE(product_category_id, '') AS product_category_id,
+			type,
+			order_item_type,
+			measure_unit,
+			size_prices,
+			COALESCE(do_not_print_in_cheque, false) AS do_not_print_in_cheque,
+			COALESCE(parent_group, '') AS parent_group,
+			"order",
+			COALESCE(payment_subject, '') AS payment_subject,
+			code,
+			COALESCE(is_deleted, false) AS is_deleted,
+			COALESCE(can_set_open_price, false) AS can_set_open_price,
+			splittable,
+			index,
+			COALESCE(is_new, false) AS is_new,
+			img_url,
+			COALESCE(is_active, false) AS is_active, 
+			COALESCE(is_have_box, false) AS is_have_box,
+			box_count,
+			box_price,
+			description,
+			created_at,
+			updated_at,
+			weight
+		FROM product
+		WHERE parent_group = '8a82292e-a027-4e69-8554-7fde17c058c8'
+		  AND COALESCE(is_deleted, false) = false
+		ORDER BY index ASC, created_at DESC;
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
+		return resp, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p structs.Product
+		err := rows.Scan(
+			&resp.Count,
+			&p.ID,
+			&p.GroupID,
+			&p.Name,
+			&p.ProductCategoryID,
+			&p.Type,
+			&p.OrderItemType,
+			&p.MeasureUnit,
+			&p.SizePrices,
+			&p.DoNotPrintInCheque,
+			&p.ParentGroup,
+			&p.Order,
+			&p.PaymentSubject,
+			&p.Code,
+			&p.IsDeleted,
+			&p.CanSetOpenPrice,
+			&p.Splittable,
+			&p.Index,
+			&p.IsNew,
+			&p.ImgUrl,
+			&p.IsActive,
+			&p.IsHaveBox,
+			&p.BoxCount,
+			&p.BoxPrice,
+			&p.Description, // ✅ shu yetishmayotgan edi
+			&p.CreatedAt,
+			&p.UpdatedAt,
+			&p.Weight,
+		)
+		if err != nil {
+			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
+			return resp, fmt.Errorf("row scan failed: %w", err)
+		}
+		resp.Products = append(resp.Products, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Error(ctx, "err on rows iteration", zap.Error(err))
+		return resp, fmt.Errorf("rows iteration failed: %w", err)
+	}
+
+	return resp, nil
 }

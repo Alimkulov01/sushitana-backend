@@ -105,6 +105,7 @@ func NewRouter(params Params) {
 		productGroup.POST("/sync", params.Product.SyncProduct)
 		productGroup.GET("/:id", params.Product.GetByIDProduct)
 		out.GET("/product", params.Product.GetListProduct)
+		productGroup.GET("/packaging", params.Product.GetBox)
 		productGroup.PATCH("/", params.Product.PatchProduct)
 		productGroup.DELETE("/:id", params.Product.DeleteProduct)
 	}
