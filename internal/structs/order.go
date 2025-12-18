@@ -90,23 +90,18 @@ type GetListOrderByTgIDResponse struct {
 	Orders []Order `json:"orders"`
 }
 
-// Address is your local address model.
-// NOTE: iiko courier delivery requires structured address in deliveries/create.
-// Keep existing fields + add optional detailed parts (won't break old JSON).
 type Address struct {
 	Lat        float64 `json:"lat"`
 	Lng        float64 `json:"lng"`
-	Name       string  `json:"name"` // full address text (legacy / UI)
+	Name       string  `json:"name"`
 	DistanceKm float64 `json:"distanceKm"`
-
-	// Optional structured parts (recommended for iiko DELIVERY).
-	City      string `json:"city,omitempty"`
-	Street    string `json:"street,omitempty"`
-	House     string `json:"house,omitempty"`
-	Flat      string `json:"flat,omitempty"`
-	Entrance  string `json:"entrance,omitempty"`
-	Floor     string `json:"floor,omitempty"`
-	Doorphone string `json:"doorphone,omitempty"`
+	City       string  `json:"city,omitempty"`
+	Street     string  `json:"street,omitempty"`
+	House      string  `json:"house,omitempty"`
+	Flat       string  `json:"flat,omitempty"`
+	Entrance   string  `json:"entrance,omitempty"`
+	Floor      string  `json:"floor,omitempty"`
+	Doorphone  string  `json:"doorphone,omitempty"`
 }
 
 type OrderProduct struct {
