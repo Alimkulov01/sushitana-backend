@@ -1,7 +1,6 @@
 package category
 
 import (
-	"strings"
 	"sushitana/apps/bot/commands/product"
 	"sushitana/internal/cart"
 	"sushitana/internal/category"
@@ -48,7 +47,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 	chatID := ctx.Update().FromChat().ID
-	text := strings.TrimSpace(ctx.Update().Message.Text)
+	// text := strings.TrimSpace(ctx.Update().Message.Text)
 	account := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		c.logger.Error(ctx.Context, "account not found")
@@ -56,7 +55,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	}
 	lang := account.Language
 	cats, err := c.CategorySvc.GetList(ctx.Context, structs.GetListCategoryRequest{
-		Search: texts.Get(lang, text),
+		IsActive: true,
 	})
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get categories", zap.Error(err))

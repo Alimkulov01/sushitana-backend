@@ -173,7 +173,16 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 		offset = req.Offset
 	}
 
-	query := `
+	where := "WHERE TRUE"
+	args := []any{limit, offset}
+	if req.IsActive {
+		where += `
+			AND COALESCE(is_active, false) = true
+			AND COALESCE(is_deleted, false) = false
+		`
+	}
+
+	query := fmt.Sprintf(`
 		SELECT 
 			COUNT(*) OVER(), 
 			id, 
@@ -187,23 +196,25 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 			COALESCE(is_included_in_menu, false) AS is_included_in_menu, 
 			COALESCE(is_group_modifier, false) AS is_group_modifier, 
 			COALESCE(is_deleted, false) AS is_deleted 
-		FROM category ORDER BY "index" ASC, created_at DESC 
+		FROM category
+		%s
+		ORDER BY "index" ASC, created_at DESC 
 		LIMIT $1 OFFSET $2;
-	`
+	`, where)
 
-	rows, err := r.db.Query(ctx, query, limit, offset)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
 		return resp, fmt.Errorf("query failed: %w", err)
 	}
 	defer rows.Close()
 
-	var list []structs.Category
+	list := make([]structs.Category, 0, limit)
 
 	for rows.Next() {
 		var c structs.Category
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&resp.Count,
 			&c.ID,
 			&c.Name,
@@ -216,8 +227,7 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 			&c.IsIncludedInMenu,
 			&c.IsGroupModifier,
 			&c.IsDeleted,
-		)
-		if err != nil {
+		); err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
 			return resp, fmt.Errorf("row scan failed: %w", err)
 		}
@@ -225,9 +235,9 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 		list = append(list, c)
 	}
 
-	if rows.Err() != nil {
-		r.logger.Error(ctx, "err on rows iteration", zap.Error(rows.Err()))
-		return resp, fmt.Errorf("rows iteration failed: %w", rows.Err())
+	if err := rows.Err(); err != nil {
+		r.logger.Error(ctx, "err on rows iteration", zap.Error(err))
+		return resp, fmt.Errorf("rows iteration failed: %w", err)
 	}
 
 	resp.Categories = list
