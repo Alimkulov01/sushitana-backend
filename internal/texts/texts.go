@@ -38,6 +38,11 @@ const (
 	CartItemDeleteHint    TextKey = "cart_item_delete_hint"
 	CartQtyHint           TextKey = "cart_qty_hint"
 	CartClearHint         TextKey = "cart_clear_hint"
+	DeliveryBtn           TextKey = "delivery_btn"
+	PickupBtn             TextKey = "pickup_btn"
+	SelectDeliveryType    TextKey = "select_delivery_type"
+	AskSendLocation       TextKey = "ask_send_location"
+	SendLocationBtn       TextKey = "send_location_btn"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -244,6 +249,31 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "🔄 Savatni tozalash",
 		RU: "🔄 Очистить корзину",
 		EN: "🔄 Clear cart",
+	},
+	DeliveryBtn: {
+		UZ: "🚚 Yetkazib berish",
+		RU: "🚚 Доставка",
+		EN: "🚚 Delivery",
+	},
+	PickupBtn: {
+		UZ: "🏃 Olib ketish",
+		RU: "🏃 Самовывоз",
+		EN: "🏃 Pickup",
+	},
+	SelectDeliveryType: {
+		UZ: "Yetkazib berish turini tanlang",
+		RU: "Выберите доставку или самовывоз",
+		EN: "Choose delivery or pickup",
+	},
+	AskSendLocation: {
+		UZ: "Lokatsiya yuboring yoki manzilni yozing:",
+		RU: "Отправьте локацию или напишите адрес доставки:",
+		EN: "Send your location or type the delivery address:",
+	},
+	SendLocationBtn: {
+		UZ: "📍 Lokatsiyani yuborish",
+		RU: "📍 Отправить локацию",
+		EN: "📍 Send location",
 	},
 }
 

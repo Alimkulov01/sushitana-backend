@@ -1108,3 +1108,7 @@ func splitCartText(lang utils.Lang, full string) (info string, body string) {
 
 	return info, trimmed
 }
+
+func (c *Commands) ShowCartView(ctx *tgrouter.Ctx) {
+	c.GetCartInfo(ctx)
+}

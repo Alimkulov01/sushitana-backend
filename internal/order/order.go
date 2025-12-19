@@ -207,7 +207,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			return "", fmt.Errorf("PAYME_KASSA_ID env not found")
 		}
 
-		amountTiyin := int64(1000 * 100)
+		amountTiyin := ord.Order.TotalPrice * 100
 
 		payURL, err = s.paymeSvc.BuildPaymeCheckoutURL(merchantID, ord.Order.ID, amountTiyin)
 		if err != nil {
