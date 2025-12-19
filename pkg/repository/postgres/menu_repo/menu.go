@@ -61,14 +61,14 @@ func (r repo) GetMenu(ctx context.Context) ([]structs.Menu, error) {
 				'name', p.name,
 				'imgUrl', p.img_url,
 				'isActive', COALESCE(p.is_active, false),
-				'sizePrices', COALESCE(b.size_prices, '[]'::jsonb),
+				'sizePrices', COALESCE(p.size_prices, '[]'::jsonb),
 				'box_id', COALESCE(p.box_id, ''),
 				'box', (
 					SELECT jsonb_build_object(
 					'id', b.id,
 					'name', b.name,
 					'imgUrl', b.img_url,
-					'sizePrices', COALESCE(p.size_prices, '[]'::jsonb),
+					'sizePrices', COALESCE(b.size_prices, '[]'::jsonb),
 					'isActive', COALESCE(b.is_active, false),
 					'weight', b.weight
 					)
