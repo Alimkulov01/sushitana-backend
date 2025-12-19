@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"sushitana/apps/bot/commands/category"
 	"sushitana/apps/bot/commands/clients"
@@ -84,7 +85,7 @@ func NewBot(p Params) error {
 				lang := account.Language
 				txt := ctx.Update().Message.Text
 
-				if sameBtn(txt, texts.Get(lang, texts.CartConfirm)) {
+				if eqBtn(txt, texts.Get(lang, texts.CartConfirm)) {
 					_, data, _ := ctx.GetState()
 					if data == nil {
 						data = map[string]string{}
@@ -110,14 +111,14 @@ func NewBot(p Params) error {
 				lang := account.Language
 				txt := ctx.Update().Message.Text
 
-				if sameBtn(txt, texts.Get(lang, texts.BackButton)) {
+				if eqBtn(txt, texts.Get(lang, texts.BackButton)) {
 					_, data, _ := ctx.GetState()
 					if data == nil {
 						data = map[string]string{}
 					}
 
 					_ = ctx.UpdateState("get_cart", data)
-					p.ProductCmd.ShowCartView(ctx) // <-- MUHIM
+					p.ProductCmd.ShowCartView(ctx) // <-- cartni chizadi
 					return
 				}
 			}
@@ -237,4 +238,23 @@ func sameBtn(got, want string) bool {
 	got = strings.TrimSpace(strings.ReplaceAll(got, "\uFE0F", ""))
 	want = strings.TrimSpace(strings.ReplaceAll(want, "\uFE0F", ""))
 	return got == want
+}
+
+func normBtn(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.ReplaceAll(s, "\uFE0F", "") // emoji variation selector
+
+	// faqat harf/raqam qoldiramiz
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func eqBtn(got, want string) bool {
+	return normBtn(got) == normBtn(want)
 }

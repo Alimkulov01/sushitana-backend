@@ -12,6 +12,7 @@ import (
 	"sushitana/pkg/tgrouter"
 	"sushitana/pkg/utils"
 	"sushitana/pkg/utils/ctxman"
+	"unicode"
 
 	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 	"go.uber.org/fx"
@@ -110,12 +111,12 @@ func (c *Commands) DeliveryTypeHandler(ctx *tgrouter.Ctx) {
 	lang := account.Language
 
 	switch {
-	case sameBtnText(text, texts.Get(lang, texts.DeliveryBtn)):
+	case eqBtn(text, texts.Get(lang, texts.DeliveryBtn)):
 		_ = ctx.UpdateState("wait_address", map[string]string{"deliveryType": "DELIVERY"})
 		c.AskLocationOrAddress(ctx)
 		return
 
-	case sameBtnText(text, texts.Get(lang, texts.PickupBtn)):
+	case eqBtn(text, texts.Get(lang, texts.PickupBtn)):
 		_ = ctx.UpdateState("wait_pickup_branch", map[string]string{"deliveryType": "PICKUP"})
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Выберите филиал для самовывоза:"))
 		return
@@ -230,8 +231,39 @@ func (c *Commands) locationKeyboard(lang utils.Lang) tgbotapi.ReplyKeyboardMarku
 	return kb
 }
 
-func sameBtnText(got, want string) bool {
-	got = strings.TrimSpace(strings.ReplaceAll(got, "\uFE0F", ""))
-	want = strings.TrimSpace(strings.ReplaceAll(want, "\uFE0F", ""))
-	return got == want
+func normBtn(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.ReplaceAll(s, "\uFE0F", "") // emoji variation selector
+
+	// faqat harf/raqam qoldiramiz
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func eqBtn(got, want string) bool {
+	return normBtn(got) == normBtn(want)
+}
+
+func keepData(ctx *tgrouter.Ctx) map[string]string {
+	_, data, _ := ctx.GetState()
+	if data == nil {
+		data = map[string]string{}
+	}
+	return data
+}
+
+func mergeData(base map[string]string, add map[string]string) map[string]string {
+	if base == nil {
+		base = map[string]string{}
+	}
+	for k, v := range add {
+		base[k] = v
+	}
+	return base
 }
