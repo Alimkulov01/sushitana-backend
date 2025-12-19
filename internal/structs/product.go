@@ -26,10 +26,20 @@ type Product struct {
 	ImgUrl             string      `json:"imgUrl"`
 	IsActive           bool        `json:"isActive"`
 	BoxId              string      `json:"box_id"`
+	Box                *BoxInfo    `json:"box,omitempty"`
 	Description        Description `json:"description"`
 	CreatedAt          time.Time   `json:"createdAt"`
 	UpdatedAt          time.Time   `json:"updatedAt"`
 	Weight             float64     `json:"weight"`
+}
+
+type BoxInfo struct {
+	ID         string      `json:"id"`
+	Name       Name        `json:"name"`
+	ImgUrl     string      `json:"imgUrl"`
+	SizePrices []SizePrice `json:"sizePrices"`
+	IsActive   bool        `json:"isActive"`
+	Weight     float64     `json:"weight"`
 }
 
 type BoxMeta struct {
