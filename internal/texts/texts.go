@@ -43,6 +43,13 @@ const (
 	SelectDeliveryType    TextKey = "select_delivery_type"
 	AskSendLocation       TextKey = "ask_send_location"
 	SendLocationBtn       TextKey = "send_location_btn"
+	CancelBtn             TextKey = "cancel_btn"
+	OrderPreviewTitle     TextKey = "order_preview_title"
+	OrderPreviewName      TextKey = "order_preview_name"
+	OrderPreviewPhone     TextKey = "order_preview_phone"
+	OrderPreviewTotal     TextKey = "order_preview_total"
+	OrderTypeDelivery     TextKey = "order_type_delivery"
+	OrderTypePickup       TextKey = "order_type_pickup"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -274,6 +281,41 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "📍 Lokatsiyani yuborish",
 		RU: "📍 Отправить локацию",
 		EN: "📍 Send location",
+	},
+	CancelBtn: {
+		UZ: "❌ Bekor qilish",
+		RU: "❌ Отменить",
+		EN: "❌ Cancel",
+	},
+	OrderPreviewTitle: {
+		UZ: "📁 Sizning buyurtmangiz:\n\n",
+		RU: "📁 Ваш заказ:\n\n",
+		EN: "📁 Your order:\n\n",
+	},
+	OrderPreviewName: {
+		UZ: "👤 Ism: %s\n",
+		RU: "👤 Имя: %s\n",
+		EN: "👤 Name: %s\n",
+	},
+	OrderPreviewPhone: {
+		UZ: "📞 Telefon: %s\n",
+		RU: "📞 Телефон: %s\n",
+		EN: "📞 Phone: %s\n",
+	},
+	OrderPreviewTotal: {
+		UZ: "💰 Jami: %v so'm",
+		RU: "💰 Итого: %v сум",
+		EN: "💰 Total: %v UZS",
+	},
+	OrderTypeDelivery: {
+		UZ: "🚚 Buyurtma turi: Yetkazib berish",
+		RU: "🚚 Тип заказа: Доставка",
+		EN: "🚚 Order type: Delivery",
+	},
+	OrderTypePickup: {
+		UZ: "🚶 Buyurtma turi: Olib ketish",
+		RU: "🚶 Тип заказа: Самовывоз",
+		EN: "🚶 Order type: Pickup",
 	},
 }
 

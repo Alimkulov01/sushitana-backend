@@ -13,6 +13,7 @@ import (
 	paymerepo "sushitana/pkg/repository/postgres/payment_repo/payme_repo"
 	"time"
 
+	"github.com/spf13/cast"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -170,7 +171,7 @@ func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCh
 		)
 	}
 
-	ord, err := s.orderRepo.GetByID(ctx, orderID)
+	ord, err := s.orderRepo.GetByOrderNumber(ctx, cast.ToInt64(orderID))
 	if err != nil {
 		return structs.PaymeCheckPerformResult{Allow: false}, rpcErr(
 			-31050,
@@ -181,7 +182,7 @@ func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCh
 		)
 	}
 
-	if ord.Order.Status != "WAITING_PAYMENT" {
+	if ord.Status != "WAITING_PAYMENT" {
 		return structs.PaymeCheckPerformResult{Allow: false}, rpcErr(
 			-31052,
 			"Операция недоступна",
@@ -191,9 +192,9 @@ func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCh
 		)
 	}
 
-	expected := expectedAmountTiyinFromOrderTotal(any(ord.Order.TotalPrice))
+	expected := expectedAmountTiyinFromOrderTotal(any(ord.TotalPrice))
 	if expected == 0 {
-		expected = int64(math.Round(float64(ord.Order.TotalPrice) * 100))
+		expected = int64(math.Round(float64(ord.TotalPrice) * 100))
 	}
 
 	if p.Amount != expected {
@@ -220,7 +221,7 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 		)
 	}
 
-	ord, err := s.orderRepo.GetByID(ctx, orderID)
+	ord, err := s.orderRepo.GetByOrderNumber(ctx, cast.ToInt64(orderID))
 	if err != nil {
 		return structs.PaymeCreateResult{}, rpcErr(
 			-31050,
@@ -231,7 +232,7 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 		)
 	}
 
-	if ord.Order.Status != "WAITING_PAYMENT" {
+	if ord.Status != "WAITING_PAYMENT" {
 		return structs.PaymeCreateResult{}, rpcErr(
 			-31052,
 			"Операция недоступна",
@@ -241,9 +242,9 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 		)
 	}
 
-	expected := expectedAmountTiyinFromOrderTotal(any(ord.Order.TotalPrice))
+	expected := expectedAmountTiyinFromOrderTotal(any(ord.TotalPrice))
 	if expected == 0 {
-		expected = int64(math.Round(float64(ord.Order.TotalPrice) * 100))
+		expected = int64(math.Round(float64(ord.TotalPrice) * 100))
 	}
 	if p.Amount != expected {
 		return structs.PaymeCreateResult{}, rpcErr(

@@ -209,7 +209,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 		amountTiyin := ord.Order.TotalPrice * 100
 
-		payURL, err = s.paymeSvc.BuildPaymeCheckoutURL(merchantID, ord.Order.ID, amountTiyin)
+		payURL, err = s.paymeSvc.BuildPaymeCheckoutURL(merchantID, cast.ToString(ord.Order.OrderNumber), amountTiyin)
 		if err != nil {
 			s.logger.Error(ctx, "->paymeSvc.BuildPaymeCheckoutURL failed", zap.Error(err), zap.String("order_id", id))
 			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_OPERATOR"})
@@ -238,8 +238,6 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 	paymentMethod := strings.ToUpper(cast.ToString(ord.Order.PaymentMethod))
 	paymentStatus := strings.ToUpper(cast.ToString(ord.Order.PaymentStatus))
 
-	// ✅ 0) Agar allaqachon iiko'ga yuborilgan bo‘lsa — qaytamiz (double send bo‘lmasin)
-	// Sizda qaysi fieldlar borligiga qarab moslang: iiko_order_id / iiko_delivery_id / status
 	if strings.TrimSpace(cast.ToString(ord.Order.IIKOOrderID)) != "" ||
 		strings.TrimSpace(cast.ToString(ord.Order.IIKODeliveryID)) != "" ||
 		curStatus == "SENT_TO_IIKO" {
@@ -251,7 +249,6 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 			return fmt.Errorf("online order: payment not completed yet (paymentStatus=%s)", paymentStatus)
 		}
 	} else {
-		// CASH bo‘lsa: operator tasdiqlamaguncha yubormaymiz (sizning flow)
 		if curStatus != "WAITING_OPERATOR" {
 			return fmt.Errorf("cash order is not ready for operator confirm (status=%s)", curStatus)
 		}

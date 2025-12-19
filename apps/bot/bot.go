@@ -111,14 +111,14 @@ func NewBot(p Params) error {
 				lang := account.Language
 				txt := ctx.Update().Message.Text
 
-				if eqBtn(txt, texts.Get(lang, texts.BackButton)) {
+				if txt == texts.Get(lang, texts.BackButton) {
 					_, data, _ := ctx.GetState()
 					if data == nil {
 						data = map[string]string{}
 					}
 
 					_ = ctx.UpdateState("get_cart", data)
-					p.ProductCmd.ShowCartView(ctx) // <-- cartni chizadi
+					p.ProductCmd.ShowCartView(ctx)
 					return
 				}
 			}
@@ -146,7 +146,6 @@ func NewBot(p Params) error {
 		lang := account.Language
 		txt := strings.TrimSpace(ctx.Update().Message.Text)
 
-		// 1 qadam orqaga: pickup_branch -> select_delivery_type
 		if txt == texts.Get(lang, texts.BackButton) {
 			_, data, _ := ctx.GetState()
 			if data == nil {
@@ -158,10 +157,8 @@ func NewBot(p Params) error {
 			return
 		}
 
-		// TODO: filial tanlash
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Филиал tanlash hali yozilmagan. ⬅️ Назад bosing."))
 	})
-	// payment step (hozircha minimal stub; keyin order package ichiga ko‘chirasiz)
 	tgrouter.On(bot, tgrouter.State("wait_payment"), func(ctx *tgrouter.Ctx) {
 		if ctx.Update().Message == nil {
 			return
@@ -182,11 +179,49 @@ func NewBot(p Params) error {
 			return
 		}
 
-		// TODO: cash/card keyboard yoziladi
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "To‘lov tanlash hali yozilmagan. ⬅️ Назад bosing."))
 	})
 
-	// callbacks (product)
+	tgrouter.On(bot, tgrouter.State("checkout_preview"), func(ctx *tgrouter.Ctx) {
+		if ctx.Update().Message != nil {
+			account, ok := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
+			if ok && account != nil {
+				lang := account.Language
+				txt := ctx.Update().Message.Text
+
+				if txt == texts.Get(lang, texts.BackButton) {
+					_, data, _ := ctx.GetState()
+					if data == nil {
+						data = map[string]string{}
+					}
+
+					if strings.ToUpper(data["deliveryType"]) == "DELIVERY" {
+						_ = ctx.UpdateState("wait_address", data)
+						p.OrderCmd.AskLocationOrAddress(ctx)
+						return
+					}
+
+					_ = ctx.UpdateState("select_delivery_type", data)
+					p.OrderCmd.Confirm(ctx)
+					return
+				}
+
+				if txt == texts.Get(lang, texts.CancelBtn) { 
+					_, data, _ := ctx.GetState()
+					if data == nil {
+						data = map[string]string{}
+					}
+					_ = ctx.UpdateState("get_cart", data)
+					p.ProductCmd.ShowCartView(ctx)
+					return
+				}
+			}
+		}
+
+		// ✅ Tasdiqlash ni order paketi ichida handle qilamiz
+		p.OrderCmd.CheckoutPreviewHandler(ctx)
+	})
+
 	tgrouter.On(bot, tgrouter.Callback(""), func(ctx *tgrouter.Ctx) {
 		if ctx.Update().CallbackQuery == nil {
 			return

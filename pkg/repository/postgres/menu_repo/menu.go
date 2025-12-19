@@ -59,24 +59,22 @@ func (r repo) GetMenu(ctx context.Context) ([]structs.Menu, error) {
 							'id', p.id,
 							'group_id', p.group_id,
 							'name', p.name,
-							'productCategoryId', p.product_category_id,
-							'type', p.type,
-							'orderItemType', p.order_item_type,
-							'measureUnit', p.measure_unit,
-							'sizePrices', COALESCE(p.size_prices, '[]'::jsonb),
-							'doNotPrintInCheque', COALESCE(p.do_not_print_in_cheque, false),
-							'parentGroup', p.parent_group,
-							'order', p."order",
-							'paymentSubject', p.payment_subject,
-							'code', p.code,
-							'isDeleted', COALESCE(p.is_deleted, false),
-							'canSetOpenPrice', COALESCE(p.can_set_open_price, false),
-							'splittable', COALESCE(p.splittable, false),
-							'index', p.index,
-							'isNew', COALESCE(p.is_new, false),
 							'imgUrl', p.img_url,
 							'isActive', COALESCE(p.is_active, false),
-							'boxId', p.box_id,
+							'boxId', COALESCE(p.box_id, ''),
+							'box', (
+								SELECT jsonb_build_object(
+									'id', b.id,
+									'name', b.name,
+									'imgUrl', b.img_url,
+									'sizePrices', COALESCE(b.size_prices, '[]'::jsonb),
+									'isActive', COALESCE(b.is_active, false),
+									'weight', b.weight
+								)
+								FROM product b
+								WHERE b.id = p.box_id
+								LIMIT 1
+							),
 							'description', COALESCE(p.description, '{}'::jsonb),
 							'weight', p.weight,
 							'createdAt', TO_CHAR(p.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
