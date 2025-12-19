@@ -901,7 +901,6 @@ func (c *Commands) CartQtyChangeCallback(ctx *tgrouter.Ctx, delta int64) {
 		return
 	}
 
-	// ✅ cart bo‘sh: 3 ta UI msgni o‘chirish + state + main menu
 	if len(items.Cart.Products) == 0 {
 		c.deleteCartUIMessages(ctx, cb.Message.Chat.ID)
 		_ = ctx.UpdateState("show_main_menu", nil)
