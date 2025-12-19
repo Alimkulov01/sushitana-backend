@@ -109,13 +109,13 @@ func (c *Commands) DeliveryTypeHandler(ctx *tgrouter.Ctx) {
 	}
 	lang := account.Language
 
-	switch text {
-	case texts.Get(lang, texts.DeliveryBtn):
+	switch {
+	case sameBtnText(text, texts.Get(lang, texts.DeliveryBtn)):
 		_ = ctx.UpdateState("wait_address", map[string]string{"deliveryType": "DELIVERY"})
 		c.AskLocationOrAddress(ctx)
 		return
 
-	case texts.Get(lang, texts.PickupBtn):
+	case sameBtnText(text, texts.Get(lang, texts.PickupBtn)):
 		_ = ctx.UpdateState("wait_pickup_branch", map[string]string{"deliveryType": "PICKUP"})
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Выберите филиал для самовывоза:"))
 		return
@@ -228,4 +228,10 @@ func (c *Commands) locationKeyboard(lang utils.Lang) tgbotapi.ReplyKeyboardMarku
 	kb.ResizeKeyboard = true
 	kb.OneTimeKeyboard = false
 	return kb
+}
+
+func sameBtnText(got, want string) bool {
+	got = strings.TrimSpace(strings.ReplaceAll(got, "\uFE0F", ""))
+	want = strings.TrimSpace(strings.ReplaceAll(want, "\uFE0F", ""))
+	return got == want
 }

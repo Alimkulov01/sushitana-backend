@@ -82,10 +82,15 @@ func NewBot(p Params) error {
 			account, ok := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 			if ok && account != nil {
 				lang := account.Language
-				txt := strings.TrimSpace(ctx.Update().Message.Text)
+				txt := ctx.Update().Message.Text
 
-				if txt == texts.Get(lang, texts.CartConfirm) {
-					_ = ctx.UpdateState("select_delivery_type", nil)
+				if sameBtn(txt, texts.Get(lang, texts.CartConfirm)) {
+					_, data, _ := ctx.GetState()
+					if data == nil {
+						data = map[string]string{}
+					}
+
+					_ = ctx.UpdateState("select_delivery_type", data)
 					p.OrderCmd.Confirm(ctx)
 					return
 				}
@@ -95,21 +100,24 @@ func NewBot(p Params) error {
 		p.ProductCmd.GetCartInfoHandler(ctx)
 	})
 
-	// states (product)
 	tgrouter.On(bot, tgrouter.State("category_selected"), p.ProductCmd.CategoryByProductMenu)
 	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfoHandler)
 
-	// select_delivery_type wrapper: ⬅️ Назад -> get_cart (1 qadam orqaga)
 	tgrouter.On(bot, tgrouter.State("select_delivery_type"), func(ctx *tgrouter.Ctx) {
 		if ctx.Update().Message != nil {
 			account, ok := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 			if ok && account != nil {
 				lang := account.Language
-				txt := strings.TrimSpace(ctx.Update().Message.Text)
+				txt := ctx.Update().Message.Text
 
-				if txt == texts.Get(lang, texts.BackButton) {
-					_ = ctx.UpdateState("get_cart", nil)
-					p.ProductCmd.GetCartInfoHandler(ctx)
+				if sameBtn(txt, texts.Get(lang, texts.BackButton)) {
+					_, data, _ := ctx.GetState()
+					if data == nil {
+						data = map[string]string{}
+					}
+
+					_ = ctx.UpdateState("get_cart", data)
+					p.ProductCmd.ShowCartView(ctx) // <-- MUHIM
 					return
 				}
 			}
@@ -223,4 +231,10 @@ func registerClientCommands(tb *tgbotapi.BotAPI) {
 		{Command: "start", Description: "Перезапустить бота"},
 	}...)
 	_, _ = tb.Request(cfg)
+}
+
+func sameBtn(got, want string) bool {
+	got = strings.TrimSpace(strings.ReplaceAll(got, "\uFE0F", ""))
+	want = strings.TrimSpace(strings.ReplaceAll(want, "\uFE0F", ""))
+	return got == want
 }
