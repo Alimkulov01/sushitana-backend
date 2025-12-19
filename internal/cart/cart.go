@@ -29,6 +29,7 @@ type (
 		Patch(ctx context.Context, req structs.PatchCart) (int64, error)
 		GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error)
 		GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error)
+		ChangeCountDelta(ctx context.Context, tgid int64, productID string, delta int64) (newCount int64, err error)
 	}
 	service struct {
 		cartRepo cartRepo.Repo
@@ -53,6 +54,15 @@ func (s *service) Create(ctx context.Context, req structs.CreateCart) error {
 		return err
 	}
 	return err
+}
+
+func (s *service) ChangeCountDelta(ctx context.Context, tgid int64, productID string, delta int64) (newCount int64, err error) {
+	newCount, err = s.cartRepo.ChangeCountDelta(ctx, tgid, productID, delta)
+	if err != nil {
+		s.logger.Error(ctx, "->cartRepo.ChangeCountDelta", zap.Error(err))
+		return 0, err
+	}
+	return newCount, err
 }
 
 func (s *service) Clear(ctx context.Context, tgID int64) error {

@@ -263,9 +263,7 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Product, error) 
 				COALESCE(is_new, false) AS is_new,
 				img_url,
 				COALESCE(is_active, false) AS is_active, 
-				COALESCE(is_have_box, false) AS is_have_box,
-				box_count,
-				box_price,
+				COALESCE(box_id, '') AS box_id,
 				description,
 				created_at,
 				updated_at,
@@ -300,9 +298,7 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Product, error) 
 		&resp.IsNew,
 		&resp.ImgUrl,
 		&resp.IsActive,
-		&resp.IsHaveBox,
-		&resp.BoxCount,
-		&resp.BoxPrice,
+		&resp.BoxId,
 		&resp.Description,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
@@ -344,9 +340,7 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 			COALESCE(is_new, false) AS is_new,
 			img_url,
 			COALESCE(is_active, false) AS is_active, 
-			COALESCE(is_have_box, false) AS is_have_box,
-			box_count,
-			box_price,
+			COALESCE(box_id, '') AS box_id,
 			description,
 			created_at,
 			updated_at,
@@ -386,9 +380,7 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 		&resp.IsNew,
 		&resp.ImgUrl,
 		&resp.IsActive,
-		&resp.IsHaveBox,
-		&resp.BoxCount,
-		&resp.BoxPrice,
+		&resp.BoxId,
 		&resp.Description,
 		&resp.CreatedAt,
 		&resp.UpdatedAt,
@@ -455,9 +447,7 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 			COALESCE(is_new, false) AS is_new,
 			img_url,
 			COALESCE(is_active, false) AS is_active, 
-			COALESCE(is_have_box, false) AS is_have_box,
-			box_count,
-			box_price,
+			COALESCE(box_id, '') AS box_id,
 			description,
 			created_at,
 			updated_at,
@@ -505,9 +495,7 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 			&p.IsNew,
 			&p.ImgUrl,
 			&p.IsActive,
-			&p.IsHaveBox,
-			&p.BoxCount,
-			&p.BoxPrice,
+			&p.BoxId,
 			&p.Description,
 			&p.CreatedAt,
 			&p.UpdatedAt,
@@ -554,18 +542,11 @@ func (r *repo) Patch(ctx context.Context, req structs.PatchProduct) (int64, erro
 		setValues = append(setValues, "is_active = :is_active")
 		params["is_active"] = *req.IsActive
 	}
-	if req.IsHaveBox != nil {
-		setValues = append(setValues, "is_have_box = :is_have_box")
-		params["is_have_box"] = *req.IsHaveBox
+	if req.BoxId != nil {
+		setValues = append(setValues, "box_id = :box_id")
+		params["box_id"] = *req.BoxId
 	}
-	if req.BoxCount != nil {
-		setValues = append(setValues, "box_count = :box_count")
-		params["box_count"] = *req.BoxCount
-	}
-	if req.BoxPrice != nil {
-		setValues = append(setValues, "box_price = :box_price")
-		params["box_price"] = *req.BoxPrice
-	}
+
 	if req.Description != nil {
 		setValues = append(setValues, "description = :description")
 		params["description"] = *req.Description
@@ -639,44 +620,51 @@ func (r *repo) Delete(ctx context.Context, productID string) error {
 
 func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []structs.Product, err error) {
 	r.logger.Info(ctx, "GetList Product by category name", zap.Any("req", req))
-	pattern := "%" + req + "%"
+
+	pattern := "%" + strings.TrimSpace(req) + "%"
 
 	query := `
 		SELECT
+			COUNT(*) OVER() AS total_count,
 			p.id,
 			p.group_id,
 			p.name,
-			p.product_category_id,
+			COALESCE(p.product_category_id, '') AS product_category_id,
 			p.type,
 			p.order_item_type,
 			p.measure_unit,
 			p.size_prices,
 			COALESCE(p.do_not_print_in_cheque, false) AS do_not_print_in_cheque,
-			p.parent_group,
-			p.order,
-			p.payment_subject,
+			COALESCE(p.parent_group, '') AS parent_group,
+			p."order",
+			COALESCE(p.payment_subject, '') AS payment_subject,
 			p.code,
-			COALESCE(p.is_deleted, false) AS is_deleted ,
+			COALESCE(p.is_deleted, false) AS is_deleted,
 			COALESCE(p.can_set_open_price, false) AS can_set_open_price,
-			COALESCE(p.splittable, false) AS splittable,
+			p.splittable,
 			p.index,
 			COALESCE(p.is_new, false) AS is_new,
-			p.img_url,
-			COALESCE(p.is_active, false) AS is_active, 
-			COALESCE(p.is_have_box, false) AS is_have_box,
-			p.box_count,
-			p.box_price,
+			COALESCE(p.img_url, '') AS img_url,
+			COALESCE(p.is_active, false) AS is_active,
+			COALESCE(p.box_id, '') AS box_id,
+			p.description,
 			p.created_at,
 			p.updated_at,
 			p.weight
 		FROM product AS p
 		JOIN category AS c ON c.id = p.parent_group
-		WHERE c.name->>'uz' ILIKE $1 OR
-			  c.name->>'ru' ILIKE $1 OR
-			  c.name->>'en' ILIKE $1
-			  AND EXISTS (
+		WHERE
+			(
+				c.name->>'uz' ILIKE $1 OR
+				c.name->>'ru' ILIKE $1 OR
+				c.name->>'en' ILIKE $1
+			)
+			AND COALESCE(p.is_deleted, false) = false
+			-- xohlasangiz faqat aktiv product:
+			-- AND COALESCE(p.is_active, false) = true
+			AND EXISTS (
 				SELECT 1
-				FROM jsonb_array_elements(size_prices) AS sp
+				FROM jsonb_array_elements(COALESCE(p.size_prices, '[]'::jsonb)) AS sp
 				WHERE (sp->'price'->>'currentPrice')::bigint > 0
 			)
 		ORDER BY p.created_at DESC
@@ -685,15 +673,20 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 	rows, err := r.db.Query(ctx, query, pattern)
 	if err != nil {
 		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
-		return resp, fmt.Errorf("query failed: %w", err)
+		return nil, fmt.Errorf("query failed: %w", err)
 	}
 	defer rows.Close()
 
-	var list []structs.Product
+	list := make([]structs.Product, 0, 32)
 
 	for rows.Next() {
-		var p structs.Product
+		var (
+			p          structs.Product
+			totalCount int64
+		)
+
 		err := rows.Scan(
+			&totalCount, // COUNT(*) OVER()
 			&p.ID,
 			&p.GroupID,
 			&p.Name,
@@ -714,24 +707,25 @@ func (r *repo) GetListCategoryName(ctx context.Context, req string) (resp []stru
 			&p.IsNew,
 			&p.ImgUrl,
 			&p.IsActive,
-			&p.IsHaveBox,
-			&p.BoxCount,
-			&p.BoxPrice,
+			&p.BoxId,
+			&p.Description,
 			&p.CreatedAt,
 			&p.UpdatedAt,
 			&p.Weight,
 		)
 		if err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
-			return resp, fmt.Errorf("row scan failed: %w", err)
+			return nil, fmt.Errorf("row scan failed: %w", err)
 		}
+
 		list = append(list, p)
 	}
 
-	if rows.Err() != nil {
-		r.logger.Error(ctx, "err on rows iteration", zap.Error(rows.Err()))
-		return resp, fmt.Errorf("rows iteration failed: %w", rows.Err())
+	if err := rows.Err(); err != nil {
+		r.logger.Error(ctx, "err on rows iteration", zap.Error(err))
+		return nil, fmt.Errorf("rows iteration failed: %w", err)
 	}
+
 	return list, nil
 }
 
@@ -758,10 +752,7 @@ func (r *repo) GetBox(ctx context.Context) (resp structs.GetListProductResponse,
 			index,
 			COALESCE(is_new, false) AS is_new,
 			img_url,
-			COALESCE(is_active, false) AS is_active, 
-			COALESCE(is_have_box, false) AS is_have_box,
-			box_count,
-			box_price,
+			COALESCE(is_active, false) AS is_active,
 			description,
 			created_at,
 			updated_at,
@@ -803,9 +794,7 @@ func (r *repo) GetBox(ctx context.Context) (resp structs.GetListProductResponse,
 			&p.IsNew,
 			&p.ImgUrl,
 			&p.IsActive,
-			&p.IsHaveBox,
-			&p.BoxCount,
-			&p.BoxPrice,
+			&p.BoxId,
 			&p.Description, // ✅ shu yetishmayotgan edi
 			&p.CreatedAt,
 			&p.UpdatedAt,

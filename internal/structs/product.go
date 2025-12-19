@@ -1,6 +1,8 @@
 package structs
 
-import "time"
+import (
+	"time"
+)
 
 type Product struct {
 	ID                 string      `json:"id"`
@@ -23,13 +25,23 @@ type Product struct {
 	IsNew              bool        `json:"isNew"`
 	ImgUrl             string      `json:"imgUrl"`
 	IsActive           bool        `json:"isActive"`
-	IsHaveBox          bool        `json:"isHaveBox"`
-	BoxCount           int64       `json:"boxCount"`
-	BoxPrice           int64       `json:"boxPrice"`
+	BoxId              string      `json:"box_id"`
 	Description        Description `json:"description"`
 	CreatedAt          time.Time   `json:"createdAt"`
 	UpdatedAt          time.Time   `json:"updatedAt"`
 	Weight             float64     `json:"weight"`
+}
+
+type BoxMeta struct {
+	Price int64
+	Name  Name
+}
+
+type ProductMeta struct {
+	Price int64
+	Name  Name
+	Url   string
+	BoxID string
 }
 
 type Description struct {
@@ -108,8 +120,6 @@ type PatchProduct struct {
 	IsNew       *bool        `json:"isNew"`
 	ImgUrl      *string      `json:"imgUrl"`
 	IsActive    *bool        `json:"isActive"`
-	IsHaveBox   *bool        `json:"isHaveBox"`
-	BoxCount    *int64       `json:"boxCount"`
-	BoxPrice    *int64       `json:"boxPrice"`
+	BoxId       *string      `json:"box_id"`
 	Description *Description `json:"description"`
 }

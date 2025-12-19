@@ -1,0 +1,7 @@
+ALTER TABLE product
+  ADD COLUMN IF NOT EXISTS box_id VARCHAR;
+
+ALTER TABLE product
+  DROP COLUMN IF EXISTS is_have_box,
+  DROP COLUMN IF EXISTS box_count,
+  DROP COLUMN IF EXISTS box_price;

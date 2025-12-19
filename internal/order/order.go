@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"sushitana/internal/iiko"
 	"sushitana/internal/payment/click"
@@ -237,21 +238,34 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 	paymentMethod := strings.ToUpper(cast.ToString(ord.Order.PaymentMethod))
 	paymentStatus := strings.ToUpper(cast.ToString(ord.Order.PaymentStatus))
 
-	if curStatus != "WAITING_OPERATOR" {
-		return fmt.Errorf("order is not ready for operator confirm (status=%s)", curStatus)
+	// ✅ 0) Agar allaqachon iiko'ga yuborilgan bo‘lsa — qaytamiz (double send bo‘lmasin)
+	// Sizda qaysi fieldlar borligiga qarab moslang: iiko_order_id / iiko_delivery_id / status
+	if strings.TrimSpace(cast.ToString(ord.Order.IIKOOrderID)) != "" ||
+		strings.TrimSpace(cast.ToString(ord.Order.IIKODeliveryID)) != "" ||
+		curStatus == "SENT_TO_IIKO" {
+		return nil
 	}
+
 	if paymentMethod == "CLICK" || paymentMethod == "PAYME" {
 		if paymentStatus != "PAID" {
 			return fmt.Errorf("online order: payment not completed yet (paymentStatus=%s)", paymentStatus)
 		}
+	} else {
+		// CASH bo‘lsa: operator tasdiqlamaguncha yubormaymiz (sizning flow)
+		if curStatus != "WAITING_OPERATOR" {
+			return fmt.Errorf("cash order is not ready for operator confirm (status=%s)", curStatus)
+		}
 	}
 
-	iikoReq, err := buildCreateOrderForIiko(ord) // <-- endi IikoCreateDeliveryRequest
+	iikoReq, err := buildCreateOrderForIiko(ord)
 	if err != nil {
 		return err
 	}
 
-	resp, err := s.iikoSvc.CreateOrder(ctx, iikoReq) // <-- IikoCreateDeliveryResponse
+	ctx2, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	resp, err := s.iikoSvc.CreateOrder(ctx2, iikoReq)
 	if err != nil {
 		s.logger.Error(ctx, "->iikoSvc.CreateOrder failed", zap.Error(err), zap.String("order_id", orderID))
 		return err
@@ -262,6 +276,7 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		return err
 	}
 
+	// ✅ 3) status: xohlasangiz SENT_TO_IIKO qiling, yoki statusni o‘zgartirmasdan ham bo‘ladi
 	if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 		OrderId: orderID,
 		Status:  "SENT_TO_IIKO",
@@ -272,6 +287,7 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 
 	return nil
 }
+
 func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error {
 	pStatus := strings.ToUpper(strings.TrimSpace(req.Status))
 	if err := s.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
@@ -295,11 +311,8 @@ func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateSta
 
 			// address bo'lmasa yubormaymiz
 			if deliveryType == "DELIVERY" && ord.Order.Address == nil {
-				_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: req.OrderId, Status: "NEED_ADDRESS"})
 				return fmt.Errorf("paid but address missing")
 			}
-
-			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: req.OrderId, Status: "WAITING_IIKO"})
 
 			// iiko create (async tavsiya)
 			go func(orderID string) {
@@ -396,13 +409,12 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 	deliveryType := strings.ToUpper(strings.TrimSpace(ord.Order.DeliveryType))
 	paymentMethod := strings.ToUpper(strings.TrimSpace(ord.Order.PaymentMethod))
 
-	// orderTypeId
-	orderTypeID := ""
+	var orderTypeID string
 	switch deliveryType {
 	case "DELIVERY":
-		orderTypeID = deliveryOrderTypeID
+		orderTypeID = strings.TrimSpace(deliveryOrderTypeID)
 	case "PICKUP":
-		orderTypeID = pickupOrderTypeID
+		orderTypeID = strings.TrimSpace(pickupOrderTypeID)
 	default:
 		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("unknown DeliveryType=%s", ord.Order.DeliveryType)
 	}
@@ -410,23 +422,24 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("orderTypeId empty for DeliveryType=%s", ord.Order.DeliveryType)
 	}
 
-	// paymentTypeId
-	paymentTypeID := ""
-	paymentKind := ""
-	processedExternally := false
+	var (
+		paymentTypeID       string
+		paymentKind         string
+		processedExternally bool
+	)
+
 	switch paymentMethod {
 	case "CASH":
-		paymentKind = "CASH"
-		paymentTypeID = paymentCashID
+		paymentKind = "Cash"
+		paymentTypeID = strings.TrimSpace(paymentCashID)
 	case "CLICK":
 		paymentKind = "Card"
 		processedExternally = true
-		paymentTypeID = paymentClickID
+		paymentTypeID = strings.TrimSpace(paymentClickID)
 	case "PAYME":
 		paymentKind = "Card"
 		processedExternally = true
-		paymentTypeID = paymentPaymeID
-
+		paymentTypeID = strings.TrimSpace(paymentPaymeID)
 	default:
 		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("unknown PaymentMethod=%s", ord.Order.PaymentMethod)
 	}
@@ -434,8 +447,17 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("paymentTypeId empty for PaymentMethod=%s", ord.Order.PaymentMethod)
 	}
 
-	// items
-	items := make([]structs.IikoOrderItem, 0, len(ord.Order.Products))
+	boxQty := make(map[string]float64, len(ord.Order.Products))
+	for _, p := range ord.Order.Products {
+		boxID := strings.TrimSpace(p.BoxID)
+		if boxID == "" {
+			continue
+		}
+		boxQty[boxID] += float64(p.Quantity)
+	}
+
+	items := make([]structs.IikoOrderItem, 0, len(ord.Order.Products)+len(boxQty))
+
 	for _, p := range ord.Order.Products {
 		items = append(items, structs.IikoOrderItem{
 			Type:      "Product",
@@ -444,16 +466,22 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		})
 	}
 
-	// sum
-	sum := float64(ord.Order.OrderPriceForIIKO)
-	if sum <= 0 {
-		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("totalPrice is 0; cannot build iiko payment sum")
+	for boxID, amt := range boxQty {
+		items = append(items, structs.IikoOrderItem{
+			Type:      "Product",
+			ProductId: boxID,
+			Amount:    amt,
+		})
 	}
 
-	// phone
-	phone := ord.Phone
+	sum := float64(ord.Order.OrderPriceForIIKO)
+	if sum <= 0 {
+		return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("orderPriceForIIKO is 0; cannot build iiko payment sum")
+	}
+
+	phone := strings.TrimSpace(ord.Phone)
 	if phone == "" {
-		phone = ord.Order.Phone
+		phone = strings.TrimSpace(ord.Order.Phone)
 	}
 
 	comment := strings.TrimSpace(ord.Order.Comment)
@@ -474,22 +502,27 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		},
 	}
 
-	// 2) DELIVERY bo‘lsa DeliveryPoint majburiy
 	if deliveryType == "DELIVERY" {
-		a := ord.Order.Address // sizda struct (nil bo‘lmaydi)
-		house := strings.TrimSpace(a.House)
-
-		streetName := strings.TrimSpace(a.Street)
-		if streetName == "" {
-			streetName = strings.TrimSpace(a.Name) // fallback
+		a := ord.Order.Address
+		if a == nil {
+			return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("delivery address is nil")
 		}
+
+		house := strings.TrimSpace(a.House)
 		if house == "" {
 			house = "1"
 		}
+
+		streetName := strings.TrimSpace(a.Street)
+		if streetName == "" {
+			streetName = strings.TrimSpace(a.Name)
+		}
+
 		var street *structs.IikoStreet
 		if streetName != "" {
 			street = &structs.IikoStreet{Name: streetName}
 		}
+
 		iikoOrder.DeliveryPoint = &structs.IikoDeliveryPoint{
 			Coordinates: &structs.IikoCoordinates{
 				Latitude:  a.Lat,
@@ -503,7 +536,6 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		}
 	}
 
-	// 3) return
 	return structs.IikoCreateDeliveryRequest{
 		OrganizationId:  organizationID,
 		TerminalGroupId: terminalGroupID,
@@ -514,7 +546,6 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		Order: iikoOrder,
 	}, nil
 }
-
 func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookEvent) error {
 	s.logger.Info(ctx, "IIKO webhook handling",
 		zap.String("eventType", evt.EventType),

@@ -32,6 +32,7 @@ type (
 		Patch(ctx context.Context, req structs.PatchCart) (int64, error)
 		GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByTgID, error)
 		GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error)
+		ChangeCountDelta(ctx context.Context, tgid int64, productID string, delta int64) (newCount int64, err error)
 	}
 
 	repo struct {
@@ -72,6 +73,29 @@ func (r repo) Create(ctx context.Context, req structs.CreateCart) error {
 	}
 
 	return nil
+}
+
+func (r repo) ChangeCountDelta(ctx context.Context, tgid int64, productID string, delta int64) (newCount int64, err error) {
+	const q = `
+		WITH up AS (
+			INSERT INTO carts (tgid, product_id, count)
+			VALUES ($1, $2, GREATEST($3, 0))
+			ON CONFLICT (tgid, product_id)
+			DO UPDATE SET count = GREATEST(carts.count + EXCLUDED.count, 0)
+			RETURNING count
+		),
+		del AS (
+			DELETE FROM carts
+			WHERE tgid = $1 AND product_id = $2
+			  AND (SELECT count FROM up) = 0
+		)
+		SELECT count FROM up;
+	`
+
+	if err := r.db.QueryRow(ctx, q, tgid, productID, delta).Scan(&newCount); err != nil {
+		return 0, err
+	}
+	return newCount, nil
 }
 
 func (r repo) Clear(ctx context.Context, tgID int64) error {
@@ -159,7 +183,6 @@ func (r repo) Patch(ctx context.Context, req structs.PatchCart) (int64, error) {
 }
 
 func (r repo) GetByTgID(ctx context.Context, tgID int64) (structs.CartInfo, error) {
-	fmt.Println(tgID)
 	r.logger.Info(ctx, "Get cart by tgID", zap.Int64("tgid", tgID))
 	var (
 		cart structs.CartInfo
@@ -247,51 +270,54 @@ func (r repo) GetByUserTgID(ctx context.Context, tgID int64) (structs.GetCartByT
 	}
 
 	queryCartInfo := `
-		WITH t AS (SELECT $1::bigint AS tgid)
-		SELECT
-		COALESCE(
-			SUM(
-			(COALESCE(
-				sp.selected_price,
-				(p.size_prices->0->'price'->>'currentPrice')::numeric,
-				0
-			)) * COALESCE(c.count, 0)
-			),
-			0
-		) AS total_price,
-		COALESCE(
-			JSONB_AGG(
-			JSONB_BUILD_OBJECT(
-				'id', p.id,
-				'name', p.name,
-				'img_url', p.img_url,
-				'price', (COALESCE(
-							sp.selected_price,
-							(p.size_prices->0->'price'->>'currentPrice')::numeric,
-							0
-						))::numeric,
-				'count', COALESCE(c.count, 0),
-				'size_id_used', sp.selected_sizeid
-			)
-			) FILTER (WHERE p.id IS NOT NULL),
-			'[]'::jsonb
-		) AS products
-		FROM t
-		LEFT JOIN carts c ON c.tgid = t.tgid
-		LEFT JOIN product p ON c.product_id = p.id
-		LEFT JOIN LATERAL (
-		SELECT
-			(sp->'price'->>'currentPrice')::numeric AS selected_price,
-			NULLIF(sp->>'sizeId','') AS selected_sizeid
-		FROM jsonb_array_elements(coalesce(p.size_prices, '[]'::jsonb)) sp
-		ORDER BY
-			CASE
-			WHEN (sp->>'sizeId' IS NULL OR trim(sp->>'sizeId') = '') THEN 0
-			ELSE 1
-			END
-		LIMIT 1
-		) sp ON true
-		GROUP BY t.tgid;
+WITH t AS (SELECT $1::bigint AS tgid)
+SELECT
+  COALESCE(
+    SUM(
+      (COALESCE(
+        sp.selected_price,
+        (p.size_prices->0->'price'->>'currentPrice')::numeric,
+        0
+      )) * COALESCE(c.count, 0)
+    ),
+    0
+  ) AS total_price,
+  COALESCE(
+    JSONB_AGG(
+      JSONB_BUILD_OBJECT(
+        'id', p.id,
+        'name', p.name,
+        'img_url', p.img_url,
+        'price', (COALESCE(
+                  sp.selected_price,
+                  (p.size_prices->0->'price'->>'currentPrice')::numeric,
+                  0
+                ))::numeric,
+        'count', COALESCE(c.count, 0),
+        'size_id_used', sp.selected_sizeid
+      )
+      ORDER BY
+        COALESCE(p."order", 0) ASC,
+        p.id ASC
+    ) FILTER (WHERE p.id IS NOT NULL),
+    '[]'::jsonb
+  ) AS products
+FROM t
+LEFT JOIN carts c ON c.tgid = t.tgid
+LEFT JOIN product p ON c.product_id = p.id
+LEFT JOIN LATERAL (
+  SELECT
+    (sp->'price'->>'currentPrice')::numeric AS selected_price,
+    NULLIF(sp->>'sizeId','') AS selected_sizeid
+  FROM jsonb_array_elements(coalesce(p.size_prices, '[]'::jsonb)) sp
+  ORDER BY
+    CASE
+      WHEN (sp->>'sizeId' IS NULL OR trim(sp->>'sizeId') = '') THEN 0
+      ELSE 1
+    END
+  LIMIT 1
+) sp ON true
+GROUP BY t.tgid;
 		`
 
 	if err := r.db.QueryRow(ctx, queryCartInfo, tgID).Scan(&cart.TotalPrice, &cart.Products); err != nil {

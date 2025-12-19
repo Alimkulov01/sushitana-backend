@@ -110,6 +110,10 @@ type OrderProduct struct {
 	ProductName  Name   `json:"product_name"`
 	ProductUrl   string `json:"product_url"`
 	ProductPrice int64  `json:"product_price"`
+	BoxID        string `json:"box_id"`
+	BoxName      Name   `json:"box_name"`
+	BoxPrice     int64  `json:"box_price"`
+	BoxUrl       string `json:"box_url"`
 }
 
 type CreateOrder struct {
