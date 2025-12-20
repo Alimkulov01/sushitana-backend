@@ -262,6 +262,10 @@ func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 }
 
 func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
+	if ctx.Update().Message == nil {
+		return
+	}
+
 	chatID := ctx.Update().FromChat().ID
 	text := strings.TrimSpace(ctx.Update().Message.Text)
 
@@ -271,6 +275,8 @@ func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 	lang := account.Language
+
+	// Cart / Back
 	if text == texts.Get(lang, texts.Cart) {
 		c.GetCartInfo(ctx)
 		return
@@ -283,8 +289,11 @@ func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 		c.MenuCategoryHandler(ctx)
 		return
 	}
+
+	// 1) Avval product card (photo+inline keyboard) yuboramiz
 	c.ProductInfo(ctx)
 
+	// 2) Keyin reply keyboardni olib tashlaymiz (text bo‘sh bo‘lmasin!)
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectAmount))
 	msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 	if _, err := ctx.Bot().Send(msg); err != nil {
@@ -293,14 +302,11 @@ func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 }
 
 func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
-	chatID := ctx.Update().FromChat().ID
-
-	removeMsg := tgbotapi.NewMessage(chatID, " ")
-	removeMsg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
-	if _, err := ctx.Bot().Send(removeMsg); err != nil {
-		c.logger.Error(ctx.Context, "failed to remove reply keyboard", zap.Error(err))
+	if ctx.Update().Message == nil {
+		return
 	}
 
+	chatID := ctx.Update().FromChat().ID
 	text := strings.TrimSpace(ctx.Update().Message.Text)
 
 	account, ok := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -320,6 +326,7 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 	name := getProductNameByLang(lang, resp.Name)
 	description := getProductDescriptionByLang(lang, resp.Description)
 
+	// -------- caption ----------
 	var b strings.Builder
 	fmt.Fprintf(&b, "*%s*\n", name)
 
@@ -330,29 +337,21 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 			if l == "" {
 				continue
 			}
-			fmt.Fprintf(&b, "* %s\n", l)
+			// Markdown’da chiroyli ko‘rinishi uchun bullet
+			fmt.Fprintf(&b, "• %s\n", l)
 		}
 		fmt.Fprintln(&b)
 	}
 
-	price := utils.FCurrency(resp.SizePrices[0].Price.CurrentPrice)
-	fmt.Fprintf(&b, "\n*%s %s*", price, texts.Get(lang, texts.CurrencySymbol))
+	priceStr := "0"
+	if len(resp.SizePrices) > 0 {
+		priceStr = utils.FCurrency(resp.SizePrices[0].Price.CurrentPrice)
+	}
+	fmt.Fprintf(&b, "\n*%s %s*", priceStr, texts.Get(lang, texts.CurrencySymbol))
 
 	caption := b.String()
 
-	imgSource := strings.TrimSpace(resp.ImgUrl)
-	var photoMsg tgbotapi.PhotoConfig
-
-	if imgSource != "" {
-		photoMsg = tgbotapi.NewPhoto(chatID, tgbotapi.FileURL(imgSource))
-	} else {
-		localPath := "https://sushitana.s3.us-east-1.amazonaws.com//40446061-66cb-4eb2-871f-c01a3f431789.png"
-		photoMsg = tgbotapi.NewPhoto(chatID, tgbotapi.FilePath(localPath))
-	}
-
-	photoMsg.Caption = caption
-	photoMsg.ParseMode = "Markdown"
-
+	// -------- inline keyboard ----------
 	qty := 1
 
 	addText := texts.Get(lang, texts.AddToCart)
@@ -360,17 +359,16 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 
 	_, data, _ := ctx.GetState()
 	categoryName := data["category_name"]
-
 	if categoryName == "" {
-		categoryName = text
+		// agar state bo‘lmasa, back_to_menu callback’ingiz ishlashi uchun hech bo‘lmasa bo‘sh emas qiymat
+		categoryName = "menu"
 	}
-
 	backData := fmt.Sprintf("back_to_menu:%s", categoryName)
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("➖", fmt.Sprintf("qty_dec:%s|%d", resp.ID, qty)),
-			tgbotapi.NewInlineKeyboardButtonData(strconv.Itoa(qty), "noop:"),
+			tgbotapi.NewInlineKeyboardButtonData(strconv.Itoa(qty), "noop"),
 			tgbotapi.NewInlineKeyboardButtonData("➕", fmt.Sprintf("qty_inc:%s|%d", resp.ID, qty)),
 		),
 		tgbotapi.NewInlineKeyboardRow(
@@ -381,15 +379,31 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 		),
 	)
 
+	// -------- photo (URL bo‘lsa FileURL!) ----------
+	imgSource := strings.TrimSpace(resp.ImgUrl)
+	if imgSource == "" {
+		imgSource = "https://sushitana.s3.us-east-1.amazonaws.com/40446061-66cb-4eb2-871f-c01a3f431789.png"
+	}
+
+	photoMsg := tgbotapi.NewPhoto(chatID, tgbotapi.FileURL(imgSource))
+	photoMsg.Caption = caption
+	photoMsg.ParseMode = "Markdown"
 	photoMsg.ReplyMarkup = keyboard
 
 	if _, err := ctx.Bot().Send(photoMsg); err != nil {
-		c.logger.Error(ctx.Context, "failed to send product photo", zap.Error(err))
+		// Photo fail bo‘lsa: text fallback ham inline keyboard bilan ketsin
+		c.logger.Error(ctx.Context, "failed to send product photo",
+			zap.Error(err),
+			zap.String("imgSource", imgSource),
+		)
+
 		msg := tgbotapi.NewMessage(chatID, caption)
 		msg.ParseMode = "Markdown"
+		msg.ReplyMarkup = keyboard
 		_, _ = ctx.Bot().Send(msg)
 	}
 }
+
 
 func (c *Commands) Callback(ctx *tgrouter.Ctx) {
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)

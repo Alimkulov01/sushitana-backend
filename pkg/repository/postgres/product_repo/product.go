@@ -323,7 +323,6 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 		return structs.Product{}, structs.ErrNotFound
 	}
 
-	// ILIKE uchun pattern
 	pattern := "%" + n + "%"
 
 	query := `
