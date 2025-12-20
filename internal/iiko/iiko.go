@@ -216,7 +216,7 @@ func (s *service) GetProduct(ctx context.Context, token string, req structs.GetC
 		if tok != "" {
 			httpReq.Header.Set("Authorization", "Bearer "+tok)
 		}
-		client := &http.Client{Timeout: 15 * time.Second}
+		client := &http.Client{Timeout: 60 * time.Second}
 		resp, err := client.Do(httpReq)
 		if err != nil {
 			return 0, nil, err
@@ -407,7 +407,6 @@ func (s *service) EnsureValidIikoToken(ctx context.Context) (string, error) {
 
 	return token, nil
 }
-
 
 // CreateOrder sends DELIVERY order to iiko (/api/1/deliveries/create).
 // IMPORTANT: This endpoint is for courier delivery. Address is mandatory.

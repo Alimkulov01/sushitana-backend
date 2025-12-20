@@ -316,7 +316,15 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Product, error) 
 }
 
 func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.Product, err error) {
-	r.logger.Info(ctx, "GetList Product by name", zap.Any("req", name))
+	n := strings.TrimSpace(name)
+	r.logger.Info(ctx, "Get product by name", zap.String("req", n))
+
+	if n == "" {
+		return structs.Product{}, structs.ErrNotFound
+	}
+
+	// ILIKE uchun pattern
+	pattern := "%" + n + "%"
 
 	query := `
 		SELECT
@@ -346,20 +354,21 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 			updated_at,
 			weight
 		FROM product
-		
-		WHERE 
-			name->>'uz' ILIKE $1 OR
-			name->>'ru' ILIKE $1 OR
-			name->>'en' ILIKE $1
-		AND EXISTS (
-			SELECT 1
-			FROM jsonb_array_elements(size_prices) AS sp
-			WHERE (sp->'price'->>'currentPrice')::bigint > 0
-		)
-		LIMIT 1
+		WHERE
+			(
+				name->>'uz' ILIKE $1 OR
+				name->>'ru' ILIKE $1 OR
+				name->>'en' ILIKE $1
+			)
+			AND EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(COALESCE(size_prices, '[]'::jsonb)) AS sp
+				WHERE (sp->'price'->>'currentPrice')::bigint > 0
+			)
+		LIMIT 1;
 	`
 
-	err = r.db.QueryRow(ctx, query, name).Scan(
+	err = r.db.QueryRow(ctx, query, pattern).Scan(
 		&resp.ID,
 		&resp.GroupID,
 		&resp.Name,
@@ -386,15 +395,17 @@ func (r *repo) GetByProductName(ctx context.Context, name string) (resp structs.
 		&resp.UpdatedAt,
 		&resp.Weight,
 	)
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			r.logger.Error(ctx, " err from r.db.QueryRow", zap.Error(err))
+			r.logger.Warn(ctx, "product not found by name", zap.String("name", n))
 			return structs.Product{}, structs.ErrNotFound
 		}
-		r.logger.Error(ctx, "error querying row", zap.Error(err))
-		return structs.Product{}, fmt.Errorf("error getting product item by ID: %w", err)
+		r.logger.Error(ctx, "error querying product by name", zap.Error(err))
+		return structs.Product{}, fmt.Errorf("error getting product by name: %w", err)
 	}
-	return resp, err
+
+	return resp, nil
 }
 
 func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (resp structs.GetListProductResponse, err error) {

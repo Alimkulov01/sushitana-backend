@@ -234,7 +234,6 @@ func (c *Commands) MainMenuHandler(ctx *tgrouter.Ctx) {
 	case texts.Get(lang, texts.LanguageButton):
 		_ = ctx.UpdateState("change_language", nil)
 		c.ChangeLanguageInfo(ctx)
-
 	case texts.Get(lang, texts.ContactButton):
 		_ = ctx.UpdateState("contact", nil)
 		c.Contact(ctx)
