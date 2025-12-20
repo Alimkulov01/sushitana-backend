@@ -95,7 +95,13 @@ func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
 
 	for _, evt := range events {
 		evt := evt // loop capture fix
-
+		h.logger.Info(ctx, "iiko webhook event",
+			zap.String("eventType", evt.EventType),
+			zap.String("externalNumber", evt.EventInfo.ExternalNumber),
+			zap.String("creationStatus", evt.EventInfo.CreationStatus),
+			zap.String("currentStatus", evt.EventInfo.ID), // naming sizdagi structga qarab
+			zap.String("paymentStatus", evt.EventInfo.PosID),
+		)
 		switch strings.ToUpper(strings.TrimSpace(evt.EventType)) {
 		case "DELIVERYORDERUPDATE":
 			go func() {
