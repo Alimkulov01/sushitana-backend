@@ -316,19 +316,19 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		return err
 	}
 
-	// ✅ FIX: sizning iikoSvc validatsiya "deliveryPoint required" deb tursa,
-	// PICKUP uchun ham minimal deliveryPoint qo'yib yuboramiz.
-	// (pickup uchun restoranning koordinatasini env'dan oling)
-	if deliveryType == "PICKUP" && iikoReq.Order.DeliveryPoint == nil {
-		if err := fillPickupDeliveryPointFromEnv(&iikoReq.Order); err != nil {
-			// Agar env berilmagan bo'lsa, tushunarli xato qaytaramiz
-			s.logger.Error(ctx, "pickup deliveryPoint required by iikoSvc but missing",
-				zap.String("order_id", orderID),
-				zap.Error(err),
-			)
-			return err
-		}
-	}
+	// // ✅ FIX: sizning iikoSvc validatsiya "deliveryPoint required" deb tursa,
+	// // PICKUP uchun ham minimal deliveryPoint qo'yib yuboramiz.
+	// // (pickup uchun restoranning koordinatasini env'dan oling)
+	// if deliveryType == "PICKUP" && iikoReq.Order.DeliveryPoint == nil {
+	// 	if err := fillPickupDeliveryPointFromEnv(&iikoReq.Order); err != nil {
+	// 		// Agar env berilmagan bo'lsa, tushunarli xato qaytaramiz
+	// 		s.logger.Error(ctx, "pickup deliveryPoint required by iikoSvc but missing",
+	// 			zap.String("order_id", orderID),
+	// 			zap.Error(err),
+	// 		)
+	// 		return err
+	// 	}
+	// }
 
 	// 4) DELIVERY/PICKUP -> hozir ikkalasi ham deliveries/create orqali ketadi
 	var resp structs.IikoCreateDeliveryResponse
