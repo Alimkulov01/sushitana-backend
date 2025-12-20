@@ -524,7 +524,7 @@ func validateAndNormalizeIikoDeliveryCreate(req *structs.IikoCreateDeliveryReque
 	if req.OrganizationId == "" || req.TerminalGroupId == "" {
 		return fmt.Errorf("iiko request missing organizationId/terminalGroupId")
 	}
-	if req.Order == nil {
+	if req.Order.Items == nil {
 		return fmt.Errorf("iiko request missing order")
 	}
 
