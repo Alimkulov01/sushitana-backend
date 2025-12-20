@@ -238,7 +238,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			return ord.Order.ID, err
 		}
 
-		return ord.Order.ID, nil
+		return payURL, nil
 
 	case "PAYME":
 		merchantID := strings.TrimSpace(os.Getenv("PAYME_KASSA_ID"))
@@ -260,10 +260,10 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			return ord.Order.ID, err
 		}
 
-		return ord.Order.ID, nil
+		return payURL, nil
 
 	default:
-		return ord.Order.ID, fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
+		return "", fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
 	}
 }
 

@@ -240,7 +240,7 @@ func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 		c.ShowMainMenu(ctx)
 		return
 	}
-
+	fmt.Println(text)
 	products, err := c.ProductSvc.GetListCategoryName(ctx.Context, text)
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get products", zap.Error(err))
