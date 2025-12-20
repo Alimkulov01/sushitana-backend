@@ -37,6 +37,7 @@ type (
 		GetCategory(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetCategoryResponse, error)
 		GetProduct(ctx context.Context, token string, req structs.GetCategoryMenuRequest) (structs.GetProductResponse, error)
 		UpdateIIKO(ctx context.Context, id int64, token string) (int64, error)
+		CreatePickup(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) // NEW
 		EnsureValidIikoToken(ctx context.Context) (string, error)
 	}
 	service struct {
@@ -635,4 +636,113 @@ func normalizePhone(s string) string {
 		return "+998" + s
 	}
 	return s
+}
+
+func (s *service) CreatePickup(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) {
+	var result structs.IikoCreateDeliveryResponse
+
+	// ✅ Pickup uchun deliveryPoint majburiy emas
+	if err := validateAndNormalizeIikoPickupCreate(&req); err != nil {
+		return result, err
+	}
+
+	token, err := s.EnsureValidIikoToken(ctx)
+	if err != nil {
+		return result, err
+	}
+
+	baseURL := strings.TrimSpace(os.Getenv("IIKO_API_BASE_URL"))
+	if baseURL == "" {
+		baseURL = "https://api-ru.iiko.services"
+	}
+
+	endpoint := strings.TrimRight(baseURL, "/") + "/api/1/orders/create"
+
+	jsonData, _ := json.Marshal(req)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(jsonData))
+	if err != nil {
+		return result, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{Timeout: 20 * time.Second}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		return result, err
+	}
+	defer httpResp.Body.Close()
+
+	body, _ := io.ReadAll(httpResp.Body)
+	status := httpResp.StatusCode
+
+	if status < 200 || status >= 300 {
+		return result, fmt.Errorf("iiko orders/create returned %d: %s", status, string(body))
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		s.logger.Error(ctx, "CreatePickup: unmarshal response failed", zap.Error(err), zap.ByteString("body", body))
+		return result, err
+	}
+
+	s.logger.Info(ctx, "IIKO pickup create SUCCESS parsed",
+		zap.String("externalNumber", result.OrderInfo.ExternalNumber),
+		zap.String("iikoOrderId", result.OrderInfo.ID),
+		zap.String("posId", result.OrderInfo.PosID),
+		zap.String("creationStatus", result.OrderInfo.CreationStatus),
+		zap.String("correlationId", result.CorrelationId),
+	)
+
+	return result, nil
+}
+
+func validateAndNormalizeIikoPickupCreate(req *structs.IikoCreateDeliveryRequest) error {
+	if req.OrganizationId == "" || req.TerminalGroupId == "" {
+		return fmt.Errorf("iiko request missing organizationId/terminalGroupId")
+	}
+
+	req.Order.Phone = normalizePhone(req.Order.Phone)
+	if req.Order.Phone == "" {
+		return fmt.Errorf("iiko request missing order.phone")
+	}
+	if !strings.HasPrefix(req.Order.Phone, "+") {
+		return fmt.Errorf("iiko order.phone must start with '+': %q", req.Order.Phone)
+	}
+
+	if req.Order.OrderTypeId == "" {
+		return fmt.Errorf("iiko request missing order.orderTypeId")
+	}
+
+	if len(req.Order.Items) == 0 {
+		return fmt.Errorf("iiko request has empty order.items")
+	}
+	for i := range req.Order.Items {
+		if req.Order.Items[i].Type == "" {
+			req.Order.Items[i].Type = "Product"
+		}
+	}
+
+	// ✅ PICKUP endpoint => deliveryPoint talab qilinmaydi
+	// Agar siz pickupda deliveryPoint yuborishni xohlamasangiz, tozalab qo‘ysangiz ham bo‘ladi:
+	// req.Order.DeliveryPoint = nil
+
+	// PaymentTypeKind normalize
+	for i := range req.Order.Payments {
+		p := &req.Order.Payments[i]
+		switch strings.ToUpper(strings.TrimSpace(p.PaymentTypeKind)) {
+		case "", "CASH":
+			p.PaymentTypeKind = "Cash"
+		case "ONLINE", "EXTERNAL":
+			p.PaymentTypeKind = "External"
+			if !p.IsProcessedExternally {
+				p.IsProcessedExternally = true
+			}
+		default:
+			// leave as-is
+		}
+	}
+
+	return nil
 }

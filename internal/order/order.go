@@ -305,29 +305,52 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		}
 	}
 
-	// 3) PICKUP bo'lsa hozircha iiko delivery endpointga yubormaymiz
-	// (aks holda sizdagi deliveryPoint nil xato qaytadi)
-	if deliveryType == "PICKUP" {
-		s.logger.Info(ctx, "iiko: pickup order, skip deliveries/create (need orders/create endpoint)",
-			zap.String("order_id", orderID),
-		)
-		return nil
-	}
-
-	// 4) build request (DELIVERY uchun deliveryPoint majburiy)
+	// 3) build request:
+	// DELIVERY bo'lsa deliveryPoint majburiy (builder error qaytaradi)
+	// PICKUP bo'lsa deliveryPoint kerak emas
 	iikoReq, err := buildCreateOrderForIiko(ord)
 	if err != nil {
+		s.logger.Error(ctx, "buildCreateOrderForIiko failed",
+			zap.String("order_id", orderID),
+			zap.String("delivery_type", deliveryType),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	// 5) iiko create
-	resp, err := s.iikoSvc.CreateOrder(ctx, iikoReq)
+	// 4) DELIVERY/PICKUP bo'yicha to'g'ri endpointga yuboramiz
+	var resp structs.IikoCreateDeliveryResponse
+
+	switch deliveryType {
+	case "DELIVERY":
+		resp, err = s.iikoSvc.CreateOrder(ctx, iikoReq) // deliveries/create
+	case "PICKUP":
+		resp, err = s.iikoSvc.CreatePickup(ctx, iikoReq) // ✅ orders/create (variant B)
+	default:
+		return fmt.Errorf("unknown DeliveryType=%s", ord.Order.DeliveryType)
+	}
+
 	if err != nil {
+		s.logger.Error(ctx, "iiko create failed",
+			zap.String("order_id", orderID),
+			zap.String("delivery_type", deliveryType),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	// 6) iiko meta update (sizda qanday field boriga qarab)
+	// 5) iiko meta update
+	// (OrderInfo maydonlari sizda aynan shunday bo'lsa)
 	_ = s.orderRepo.UpdateIikoMeta(ctx, orderID, resp.OrderInfo.ID, resp.OrderInfo.PosID, resp.CorrelationId)
+
+	s.logger.Info(ctx, "iiko create success",
+		zap.String("order_id", orderID),
+		zap.String("delivery_type", deliveryType),
+		zap.String("iiko_order_id", resp.OrderInfo.ID),
+		zap.String("pos_id", resp.OrderInfo.PosID),
+		zap.String("creation_status", resp.OrderInfo.CreationStatus),
+		zap.String("correlation_id", resp.CorrelationId),
+	)
 
 	return nil
 }
