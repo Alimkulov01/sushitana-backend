@@ -49,6 +49,10 @@ func New(p Params) Commands {
 	}
 }
 
+// =====================
+// LANG HELPERS
+// =====================
+
 func getProductNameByLang(lang utils.Lang, name structs.Name) string {
 	switch lang {
 	case utils.UZ:
@@ -81,6 +85,10 @@ func getCategoryNameByLang(lang utils.Lang, name structs.Name) string {
 		return name.En
 	}
 }
+
+// =====================
+// MAIN MENU
+// =====================
 
 func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
@@ -118,6 +126,7 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
+
 	keyboard := tgbotapi.NewReplyKeyboard(rows...)
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
@@ -144,6 +153,10 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 
 	_, _ = ctx.Bot().Send(msgUrl)
 }
+
+// =====================
+// CATEGORY MENU (REPLY KEYBOARD)
+// =====================
 
 func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
@@ -173,7 +186,9 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	var row []tgbotapi.KeyboardButton
 
 	for _, cat := range cats.Categories {
+		// category/product nomlari RU bo'lsin (sizning talabingiz)
 		name := getCategoryNameByLang(utils.RU, cat.Name)
+
 		btn := tgbotapi.NewKeyboardButton(name)
 		row = append(row, btn)
 
@@ -193,6 +208,8 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	keyboardRows = append(keyboardRows, backRow)
 
 	keyboard := tgbotapi.NewReplyKeyboard(keyboardRows...)
+	keyboard.ResizeKeyboard = true
+	keyboard.OneTimeKeyboard = false
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	msg.ReplyMarkup = keyboard
@@ -202,6 +219,10 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 		"last_action": "show_category",
 	})
 }
+
+// =====================
+// PRODUCTS BY CATEGORY (REPLY KEYBOARD)
+// =====================
 
 func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
@@ -231,7 +252,9 @@ func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 	var row []tgbotapi.KeyboardButton
 
 	for _, prod := range products {
+		// product nomlari RU bo'lsin (sizning talabingiz)
 		name := getProductNameByLang(utils.RU, prod.Name)
+
 		btn := tgbotapi.NewKeyboardButton(name)
 		row = append(row, btn)
 		if len(row) == 2 {
@@ -250,16 +273,23 @@ func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 	keyboardRows = append(keyboardRows, backRow)
 
 	keyboard := tgbotapi.NewReplyKeyboard(keyboardRows...)
+	keyboard.ResizeKeyboard = true
+	keyboard.OneTimeKeyboard = false
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	msg.ReplyMarkup = keyboard
 
 	_, _ = ctx.Bot().Send(msg)
+
 	_ = ctx.UpdateState("product_selected", map[string]string{
 		"last_action":   "show_products",
-		"category_name": text,
+		"category_name": text, // bu RU category name bo'lib turadi
 	})
 }
+
+// =====================
+// PRODUCT INFO (INLINE KEYBOARD)
+// =====================
 
 func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
@@ -290,7 +320,10 @@ func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 
+	// product card + inline keyboard
 	c.ProductInfo(ctx)
+
+	// reply keyboard ni yashirib qo'yamiz (product screen uchun)
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectAmount))
 	msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 	if _, err := ctx.Bot().Send(msg); err != nil {
@@ -320,6 +353,7 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 		return
 	}
 
+	// RU nom/desc
 	name := getProductNameByLang(utils.RU, resp.Name)
 	description := getProductDescriptionByLang(utils.RU, resp.Description)
 
@@ -334,7 +368,6 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 			if l == "" {
 				continue
 			}
-			// Markdown’da chiroyli ko‘rinishi uchun bullet
 			fmt.Fprintf(&b, "• %s\n", l)
 		}
 		fmt.Fprintln(&b)
@@ -345,38 +378,23 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 		priceStr = utils.FCurrency(resp.SizePrices[0].Price.CurrentPrice)
 	}
 	fmt.Fprintf(&b, "\n*%s %s*", priceStr, texts.Get(lang, texts.CurrencySymbol))
-
 	caption := b.String()
 
-	// -------- inline keyboard ----------
-	qty := 1
-
-	addText := texts.Get(lang, texts.AddToCart)
-	backText := texts.Get(lang, texts.BackButton)
-
+	// categoryName RU bo'lib state'da turadi
 	_, data, _ := ctx.GetState()
-	categoryName := data["category_name"]
+	categoryName := ""
+	if data != nil {
+		categoryName = strings.TrimSpace(data["category_name"])
+	}
 	if categoryName == "" {
-		// agar state bo‘lmasa, back_to_menu callback’ingiz ishlashi uchun hech bo‘lmasa bo‘sh emas qiymat
 		categoryName = "menu"
 	}
-	backData := fmt.Sprintf("back_to_menu:%s", categoryName)
 
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("➖", fmt.Sprintf("qty_dec:%s|%d", resp.ID, qty)),
-			tgbotapi.NewInlineKeyboardButtonData(strconv.Itoa(qty), "noop"),
-			tgbotapi.NewInlineKeyboardButtonData("➕", fmt.Sprintf("qty_inc:%s|%d", resp.ID, qty)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(addText, fmt.Sprintf("add_to_cart:%s|%d", resp.ID, qty)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(backText, backData),
-		),
-	)
+	// -------- inline keyboard (BIR xil builder) ----------
+	qty := 1
+	keyboard := buildProductInlineKeyboard(lang, resp.ID, qty, categoryName)
 
-	// -------- photo (URL bo‘lsa FileURL!) ----------
+	// -------- photo ----------
 	imgSource := strings.TrimSpace(resp.ImgUrl)
 	if imgSource == "" {
 		imgSource = "https://sushitana.s3.us-east-1.amazonaws.com/40446061-66cb-4eb2-871f-c01a3f431789.png"
@@ -388,18 +406,22 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 	photoMsg.ReplyMarkup = keyboard
 
 	if _, err := ctx.Bot().Send(photoMsg); err != nil {
-		// Photo fail bo‘lsa: text fallback ham inline keyboard bilan ketsin
 		c.logger.Error(ctx.Context, "failed to send product photo",
 			zap.Error(err),
 			zap.String("imgSource", imgSource),
 		)
 
+		// fallback text
 		msg := tgbotapi.NewMessage(chatID, caption)
 		msg.ParseMode = "Markdown"
 		msg.ReplyMarkup = keyboard
 		_, _ = ctx.Bot().Send(msg)
 	}
 }
+
+// =====================
+// CALLBACK ROUTER
+// =====================
 
 func (c *Commands) Callback(ctx *tgrouter.Ctx) {
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -466,6 +488,10 @@ func (c *Commands) OpenCartCallback(ctx *tgrouter.Ctx) {
 	c.GetCartInfo(ctx)
 }
 
+// =====================
+// FIXED: QTY CALLBACK (NO DELTA-BASED PARSING)
+// =====================
+
 func (c *Commands) ChangeQtyCallback(ctx *tgrouter.Ctx, delta int) {
 	u := ctx.Update()
 	cb := u.CallbackQuery
@@ -480,7 +506,7 @@ func (c *Commands) ChangeQtyCallback(ctx *tgrouter.Ctx, delta int) {
 	}
 	lang := account.Language
 
-	productID, qty, ok := parseProductQty(cb.Data, delta)
+	productID, qty, ok := parseProductQty(cb.Data)
 	if !ok {
 		_ = c.answerCb(ctx, "")
 		return
@@ -491,7 +517,28 @@ func (c *Commands) ChangeQtyCallback(ctx *tgrouter.Ctx, delta int) {
 		qty = 1
 	}
 
-	markup := buildProductInlineKeyboard(lang, productID, qty)
+	// categoryName ni mavjud inline keyboard'dagi back_to_menu dan olamiz
+	categoryName := ""
+	backCbData := findCallbackData(cb.Message, "back_to_menu:")
+	if backCbData != "" {
+		parts := strings.SplitN(backCbData, ":", 2)
+		if len(parts) == 2 {
+			categoryName = strings.TrimSpace(parts[1])
+		}
+	}
+	if categoryName == "" {
+		// fallback: state
+		_, data, _ := ctx.GetState()
+		if data != nil {
+			categoryName = strings.TrimSpace(data["category_name"])
+		}
+	}
+	if categoryName == "" {
+		categoryName = "menu"
+	}
+
+	// ✅ builder doim back tugmani ham qaytaradi -> yo'qolmaydi
+	markup := buildProductInlineKeyboard(lang, productID, qty, categoryName)
 
 	edit := tgbotapi.NewEditMessageReplyMarkup(cb.Message.Chat.ID, cb.Message.MessageID, markup)
 	if _, err := ctx.Bot().Request(edit); err != nil {
@@ -530,6 +577,7 @@ func (c *Commands) AddToCartCallback(ctx *tgrouter.Ctx) {
 		return
 	}
 
+	// Add bo'lgandan keyin product listga qaytish
 	backCbData := findCallbackData(cb.Message, "back_to_menu:")
 	if backCbData == "" {
 		_ = c.answerCb(ctx, "✅ Savatga qo‘shildi")
@@ -541,6 +589,11 @@ func (c *Commands) AddToCartCallback(ctx *tgrouter.Ctx) {
 	c.CategoryByProductMenuCallback(ctx)
 	cb.Data = old
 }
+
+// =====================
+// CART PARSERS (UNCHANGED)
+// =====================
+
 func parseCartQty(data string, delta int64) (productID string, curQty int64, ok bool) {
 	prefix := "cart_dec:"
 	if delta > 0 {
@@ -552,7 +605,7 @@ func parseCartQty(data string, delta int64) (productID string, curQty int64, ok 
 
 	rest := strings.TrimSpace(strings.TrimPrefix(data, prefix))
 
-	// yangi format: cart_dec:UUID  (pipesiz)
+	// yangi format: cart_dec:UUID
 	if !strings.Contains(rest, "|") {
 		if rest == "" {
 			return "", 0, false
@@ -569,11 +622,11 @@ func parseCartQty(data string, delta int64) (productID string, curQty int64, ok 
 
 	q, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
 	if err != nil {
-		// count parse bo'lmasa ham productID bilan davom etamiz
 		return pid, 0, true
 	}
 	return pid, q, true
 }
+
 func parseAddToCart(data string) (productID string, qty int, ok bool) {
 	if !strings.HasPrefix(data, "add_to_cart:") {
 		return "", 0, false
@@ -583,31 +636,38 @@ func parseAddToCart(data string) (productID string, qty int, ok bool) {
 	if len(parts) != 2 {
 		return "", 0, false
 	}
-	productID = parts[0]
-	n, err := strconv.Atoi(parts[1])
+	productID = strings.TrimSpace(parts[0])
+	n, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil || n < 1 {
 		n = 1
 	}
 	return productID, n, true
 }
 
-func parseProductQty(data string, delta int) (productID string, qty int, ok bool) {
-	prefix := "qty_dec:"
-	if delta > 0 {
-		prefix = "qty_inc:"
-	}
-	if !strings.HasPrefix(data, prefix) {
+// ✅ FIXED: delta kerak emas, prefixni data o'zi aytadi
+func parseProductQty(data string) (productID string, qty int, ok bool) {
+	data = strings.TrimSpace(data)
+
+	switch {
+	case strings.HasPrefix(data, "qty_dec:"):
+		data = strings.TrimPrefix(data, "qty_dec:")
+	case strings.HasPrefix(data, "qty_inc:"):
+		data = strings.TrimPrefix(data, "qty_inc:")
+	default:
 		return "", 0, false
 	}
 
-	rest := strings.TrimPrefix(data, prefix)
-	parts := strings.SplitN(rest, "|", 2)
+	parts := strings.SplitN(data, "|", 2)
 	if len(parts) != 2 {
 		return "", 0, false
 	}
 
-	productID = parts[0]
-	n, err := strconv.Atoi(parts[1])
+	productID = strings.TrimSpace(parts[0])
+	if productID == "" {
+		return "", 0, false
+	}
+
+	n, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil || n < 1 {
 		n = 1
 	}
@@ -628,9 +688,17 @@ func findCallbackData(msg *tgbotapi.Message, startsWith string) string {
 	return ""
 }
 
+// =====================
+// FIXED: BACK CALLBACK -> PRODUCTS LIST
+// =====================
+
 func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 	u := ctx.Update()
 	cb := u.CallbackQuery
+	if cb == nil || cb.Message == nil {
+		return
+	}
+
 	data := cb.Data
 
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -643,9 +711,13 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 	parts := strings.SplitN(data, ":", 2)
 	if len(parts) != 2 {
 		c.logger.Error(ctx.Context, "invalid back_to_menu callback data", zap.String("data", data))
+		_ = c.answerCb(ctx, "")
 		return
 	}
 	name := strings.TrimSpace(parts[1])
+	if name == "" {
+		name = "menu"
+	}
 
 	chatID := cb.Message.Chat.ID
 
@@ -655,9 +727,11 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get products", zap.Error(err))
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
+		_ = c.answerCb(ctx, "")
 		return
 	}
 
+	// product message ni o'chiramiz (orqaga qaytganda chat toza bo'lsin)
 	del := tgbotapi.NewDeleteMessage(chatID, cb.Message.MessageID)
 	if _, err := ctx.Bot().Request(del); err != nil {
 		c.logger.Error(ctx.Context, "failed to delete product message", zap.Error(err))
@@ -665,6 +739,7 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 
 	var keyboardRows [][]tgbotapi.KeyboardButton
 	var row []tgbotapi.KeyboardButton
+
 	cartTotal := c.getCartTotalCount(ctx, account.TgID)
 	if cartTotal > 0 {
 		cartText := texts.Get(lang, texts.Cart)
@@ -674,6 +749,7 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 			),
 		)
 	}
+
 	for _, prod := range products {
 		prodName := getProductNameByLang(utils.RU, prod.Name)
 		btn := tgbotapi.NewKeyboardButton(prodName)
@@ -694,6 +770,8 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 	keyboardRows = append(keyboardRows, backRow)
 
 	keyboard := tgbotapi.NewReplyKeyboard(keyboardRows...)
+	keyboard.ResizeKeyboard = true
+	keyboard.OneTimeKeyboard = false
 
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectFromMenu))
 	msg.ReplyMarkup = keyboard
@@ -705,17 +783,28 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 		"category_name": name,
 	})
 
-	if _, err := ctx.Bot().Request(tgbotapi.NewCallback(cb.ID, "")); err != nil {
-		c.logger.Error(ctx.Context, "failed to answer callback", zap.Error(err))
-	}
+	_ = c.answerCb(ctx, "")
 }
 
-func buildProductInlineKeyboard(lang utils.Lang, productID string, qty int) tgbotapi.InlineKeyboardMarkup {
+// =====================
+// ✅ FIXED: INLINE KEYBOARD BUILDER (ALWAYS BACK)
+// =====================
+
+func buildProductInlineKeyboard(lang utils.Lang, productID string, qty int, categoryName string) tgbotapi.InlineKeyboardMarkup {
+	if qty < 1 {
+		qty = 1
+	}
+	if strings.TrimSpace(categoryName) == "" {
+		categoryName = "menu"
+	}
+
 	decData := fmt.Sprintf("qty_dec:%s|%d", productID, qty)
 	incData := fmt.Sprintf("qty_inc:%s|%d", productID, qty)
 	addData := fmt.Sprintf("add_to_cart:%s|%d", productID, qty)
 
 	addText := texts.Get(lang, texts.AddToCart)
+	backText := texts.Get(lang, texts.BackButton)
+	backData := fmt.Sprintf("back_to_menu:%s", categoryName)
 
 	rowQty := tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("➖", decData),
@@ -726,8 +815,18 @@ func buildProductInlineKeyboard(lang utils.Lang, productID string, qty int) tgbo
 	rowAdd := tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData(addText, addData),
 	)
-	return tgbotapi.NewInlineKeyboardMarkup(rowQty, rowAdd)
+
+	// ✅ MUHIM: "Ortga" doim qaytsin (➖/➕ bosilganda yo'qolmasin)
+	rowBack := tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData(backText, backData),
+	)
+
+	return tgbotapi.NewInlineKeyboardMarkup(rowQty, rowAdd, rowBack)
 }
+
+// =====================
+// CART TOTAL
+// =====================
 
 func (c *Commands) getCartTotalCount(ctx *tgrouter.Ctx, tgID int64) int64 {
 	items, err := c.CartSvc.GetByUserTgID(ctx.Context, tgID)
@@ -743,6 +842,10 @@ func (c *Commands) getCartTotalCount(ctx *tgrouter.Ctx, tgID int64) int64 {
 	return total
 }
 
+// =====================
+// CART UI (UNCHANGED)
+// =====================
+
 func (c *Commands) GetCartInfo(ctx *tgrouter.Ctx) {
 	chatID := ctx.Update().FromChat().ID
 
@@ -752,7 +855,6 @@ func (c *Commands) GetCartInfo(ctx *tgrouter.Ctx) {
 	}
 	lang := account.Language
 
-	// eski cart UI’ni o‘chirib yuboramiz (dubl bo‘lmasin)
 	c.deleteCartUIMessages(ctx, chatID)
 
 	items, err := c.CartSvc.GetByUserTgID(ctx.Context, account.TgID)
@@ -800,13 +902,11 @@ func (c *Commands) GetCartInfoHandler(ctx *tgrouter.Ctx) {
 	switch text {
 	case texts.Get(lang, texts.BackButton):
 		c.deleteCartUIMessages(ctx, chatID)
-
 		_ = ctx.UpdateState("show_main_menu", nil)
 		c.ShowMainMenu(ctx)
 
 	case texts.Get(lang, texts.CartClear):
 		c.deleteCartUIMessages(ctx, chatID)
-
 		_ = ctx.UpdateState("show_main_menu", nil)
 		_ = c.tryClearCart(ctx.Context, account.TgID)
 		c.ShowMainMenu(ctx)
@@ -862,13 +962,11 @@ func (c *Commands) buildCartView(lang utils.Lang, items structs.GetCartByTgID) (
 			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%d. %s ❌", i+1, name), "cart_del:"+it.Id),
 		))
 
-		// buildCartView ichida (➖ / ➕)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("➖", "cart_dec:"+it.Id),
 			tgbotapi.NewInlineKeyboardButtonData(strconv.FormatInt(count, 10), "noop"),
 			tgbotapi.NewInlineKeyboardButtonData("➕", "cart_inc:"+it.Id),
 		))
-
 	}
 
 	total := cast.ToInt64(items.Cart.TotalPrice)
@@ -973,7 +1071,6 @@ func (c *Commands) CartDeleteCallback(ctx *tgrouter.Ctx) {
 	if err == nil && len(items.Cart.Products) == 0 {
 		_ = c.deleteMessage(ctx, cb.Message.Chat.ID, cb.Message.MessageID)
 		c.deleteCartUIMessages(ctx, cb.Message.Chat.ID)
-
 		c.ShowMainMenu(ctx)
 		return
 	}
