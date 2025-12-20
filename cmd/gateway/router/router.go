@@ -170,7 +170,7 @@ func NewRouter(params Params) {
 		courierGroup.GET("/:id", params.Order.GetByIDOrder)
 		courierGroup.GET("/", params.Order.GetListOrder)
 		courierGroup.PUT("/", params.Order.UpdateStatusOrder)
-		courierGroup.GET("/ws/orders", params.WsHandler.OrdersWS)
+		out.GET("/ws/orders", params.WsHandler.OrdersWS)
 	}
 	//iiko webhook
 	out.POST("/webhooks/iiko/:secret", params.Iiko.DeliveryOrderUpdate)
