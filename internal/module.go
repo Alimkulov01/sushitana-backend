@@ -16,6 +16,7 @@ import (
 	"sushitana/internal/payment/usecase"
 	"sushitana/internal/product"
 	"sushitana/internal/role"
+	"sushitana/internal/ws"
 
 	"go.uber.org/fx"
 )
@@ -36,4 +37,5 @@ var Module = fx.Options(
 	payme.Module,
 	shopapi.Module,
 	usecase.Module,
+	ws.Module,
 )

@@ -16,6 +16,7 @@ import (
 	shopapi "sushitana/apps/gateway/handlers/payment/shop_api"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
+	"sushitana/apps/gateway/handlers/ws"
 
 	"net/http"
 	"sushitana/apps/gateway/handlers/middleware"
@@ -55,6 +56,7 @@ type Params struct {
 	Click     click.Handler
 	Payme     payme.Handler
 	Shopapi   shopapi.Handler
+	WsHandler ws.Handler
 }
 
 func NewRouter(params Params) {
@@ -63,6 +65,7 @@ func NewRouter(params Params) {
 	out := r.Group(baseUrl)
 	out.Use(params.Ctx(), gin.Logger(), gin.Recovery())
 	permissionMiddleware := middleware.EndpointPermissionMiddleware(params.Middleware)
+
 	// iikoGroup := out.Group("/iiko")
 	// {
 	// 	iikoGroup.POST("/access-token", params.Iiko.GetIikoAccessToken)
@@ -167,6 +170,7 @@ func NewRouter(params Params) {
 		courierGroup.GET("/:id", params.Order.GetByIDOrder)
 		courierGroup.GET("/", params.Order.GetListOrder)
 		courierGroup.PUT("/", params.Order.UpdateStatusOrder)
+		courierGroup.GET("/ws/orders", params.WsHandler.OrdersWS)
 	}
 	//iiko webhook
 	out.POST("/webhooks/iiko/:secret", params.Iiko.DeliveryOrderUpdate)

@@ -16,6 +16,7 @@ import (
 	shopapi "sushitana/apps/gateway/handlers/payment/shop_api"
 	"sushitana/apps/gateway/handlers/product"
 	"sushitana/apps/gateway/handlers/role"
+	"sushitana/apps/gateway/handlers/ws"
 
 	"go.uber.org/fx"
 )
@@ -36,4 +37,5 @@ var Module = fx.Options(
 	click.Module,
 	payme.Module,
 	shopapi.Module,
+	ws.Module,
 )
