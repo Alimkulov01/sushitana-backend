@@ -40,6 +40,7 @@ type (
 		CreatePickup(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) // NEW
 		EnsureValidIikoToken(ctx context.Context) (string, error)
 	}
+
 	service struct {
 		logger   logger.Logger
 		iikorepo iikorepo.Repo
@@ -294,7 +295,6 @@ func (s *service) GetProduct(ctx context.Context, token string, req structs.GetC
 					if spSlice, ok := spAny.([]any); ok && len(spSlice) > 0 {
 						for _, sitem := range spSlice {
 							if sm, ok := sitem.(map[string]any); ok {
-								// To‘g‘ridan-to‘g‘ri json.Unmarshal orqali o‘qish — eng ishonchli!
 								b, _ := json.Marshal(sm)
 								var sp structs.SizePrice
 								if err := json.Unmarshal(b, &sp); err == nil {
@@ -405,12 +405,12 @@ func (s *service) EnsureValidIikoToken(ctx context.Context) (string, error) {
 		s.logger.Error(ctx, "failed to read stored token", zap.Error(err))
 		return "", err
 	}
-
 	return token, nil
 }
 
-// CreateOrder sends DELIVERY order to iiko (/api/1/deliveries/create).
-// IMPORTANT: This endpoint is for courier delivery. Address is mandatory.
+// CreateOrder sends order to iiko (/api/1/deliveries/create).
+// NOTE: In your setup, PICKUP is "DeliveryPickUp" orderServiceType and can be sent here too.
+// We require DeliveryPoint ONLY for courier delivery orderType.
 func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) {
 	var result structs.IikoCreateDeliveryResponse
 	start := time.Now()
@@ -435,7 +435,6 @@ func (s *service) CreateOrder(ctx context.Context, req structs.IikoCreateDeliver
 		}
 
 		if s.logger != nil {
-			// Avoid logging raw phone/address in prod if you prefer. For now keep as debug.
 			pp, _ := json.MarshalIndent(req, "", "  ")
 			s.logger.Info(ctx, "IIKO create request payload",
 				zap.String("attempt", attempt),
@@ -525,6 +524,9 @@ func validateAndNormalizeIikoDeliveryCreate(req *structs.IikoCreateDeliveryReque
 	if req.OrganizationId == "" || req.TerminalGroupId == "" {
 		return fmt.Errorf("iiko request missing organizationId/terminalGroupId")
 	}
+	if req.Order == nil {
+		return fmt.Errorf("iiko request missing order")
+	}
 
 	req.Order.Phone = normalizePhone(req.Order.Phone)
 	if req.Order.Phone == "" {
@@ -547,25 +549,18 @@ func validateAndNormalizeIikoDeliveryCreate(req *structs.IikoCreateDeliveryReque
 		}
 	}
 
-	// DELIVERY endpoint => address is mandatory.
-	// If you have PICKUP orders, do NOT call deliveries/create for them.
-	if err := requireDeliveryAddress(req); err != nil {
+	// ✅ FIX: deliveryPoint/address faqat DELIVERY orderTypeId bo‘lsa majburiy
+	if err := requireDeliveryAddressIfNeeded(req); err != nil {
 		return err
 	}
 
 	// PaymentTypeKind normalize (Cash vs External)
-	// Cash -> "Cash", Online (Click/Payme) -> "External" + isProcessedExternally=true
 	for i := range req.Order.Payments {
 		p := &req.Order.Payments[i]
 		switch strings.ToUpper(strings.TrimSpace(p.PaymentTypeKind)) {
 		case "", "CASH":
 			p.PaymentTypeKind = "Cash"
-		case "ONLINE":
-			p.PaymentTypeKind = "External"
-			if !p.IsProcessedExternally {
-				p.IsProcessedExternally = true
-			}
-		case "EXTERNAL":
+		case "ONLINE", "EXTERNAL":
 			p.PaymentTypeKind = "External"
 			if !p.IsProcessedExternally {
 				p.IsProcessedExternally = true
@@ -578,12 +573,36 @@ func validateAndNormalizeIikoDeliveryCreate(req *structs.IikoCreateDeliveryReque
 	return nil
 }
 
-func requireDeliveryAddress(req *structs.IikoCreateDeliveryRequest) error {
-	// These fields must exist in your structs to compile:
-	// req.Order.DeliveryPoint (pointer)
-	// req.Order.DeliveryPoint.Address (pointer)
-	// req.Order.DeliveryPoint.Address.House (string)  // at least
-	// Optionally Street/City etc.
+// requireDeliveryAddressIfNeeded enforces DeliveryPoint only for courier DELIVERY order type.
+// PICKUP order type is allowed with DeliveryPoint=nil.
+func requireDeliveryAddressIfNeeded(req *structs.IikoCreateDeliveryRequest) error {
+	deliveryTypeID := strings.TrimSpace(os.Getenv("IIKO_DELIVERY_ORDER_TYPE_ID"))
+	pickupTypeID := strings.TrimSpace(os.Getenv("IIKO_PICKUP_ORDER_TYPE_ID"))
+
+	ot := strings.TrimSpace(req.Order.OrderTypeId)
+
+	// If env is not set, keep backward-compatible strict behavior:
+	// (you can choose to return error instead, but this is safer for prod rollout)
+	if deliveryTypeID == "" && pickupTypeID == "" {
+		// old behavior
+		return requireDeliveryAddressStrict(req)
+	}
+
+	// Courier delivery => strict
+	if deliveryTypeID != "" && ot == deliveryTypeID {
+		return requireDeliveryAddressStrict(req)
+	}
+
+	// Pickup => no requirement
+	if pickupTypeID != "" && ot == pickupTypeID {
+		return nil
+	}
+
+	// Unknown orderTypeId => do not require by default
+	return nil
+}
+
+func requireDeliveryAddressStrict(req *structs.IikoCreateDeliveryRequest) error {
 	dp := req.Order.DeliveryPoint
 	if dp == nil {
 		return fmt.Errorf("iiko delivery requires order.deliveryPoint (nil)")
@@ -597,7 +616,6 @@ func requireDeliveryAddress(req *structs.IikoCreateDeliveryRequest) error {
 		return fmt.Errorf("iiko delivery requires address.house")
 	}
 
-	// Minimal hygiene (optional but useful)
 	if dp.Comment != "" {
 		dp.Comment = strings.TrimSpace(dp.Comment)
 	}
@@ -613,9 +631,6 @@ func requireDeliveryAddress(req *structs.IikoCreateDeliveryRequest) error {
 	if dp.Address.Doorphone != "" {
 		dp.Address.Doorphone = strings.TrimSpace(dp.Address.Doorphone)
 	}
-
-	// Optional: if you have coordinates, ensure they are not zero if your iiko setup requires it.
-	// if dp.Coordinates != nil { ... }
 
 	return nil
 }
@@ -638,6 +653,8 @@ func normalizePhone(s string) string {
 	return s
 }
 
+// ---- Optional: CreatePickup remains unchanged (you can keep it, or stop using it in order service) ----
+
 func (s *service) CreatePickup(ctx context.Context, req structs.IikoCreateDeliveryRequest) (structs.IikoCreateDeliveryResponse, error) {
 	var result structs.IikoCreateDeliveryResponse
 
@@ -655,7 +672,6 @@ func (s *service) CreatePickup(ctx context.Context, req structs.IikoCreateDelive
 	if baseURL == "" {
 		baseURL = "https://api-ru.iiko.services"
 	}
-
 	endpoint := strings.TrimRight(baseURL, "/") + "/api/1/orders/create"
 
 	jsonData, _ := json.Marshal(req)
@@ -702,6 +718,9 @@ func validateAndNormalizeIikoPickupCreate(req *structs.IikoCreateDeliveryRequest
 	if req.OrganizationId == "" || req.TerminalGroupId == "" {
 		return fmt.Errorf("iiko request missing organizationId/terminalGroupId")
 	}
+	if req.Order.Items == nil {
+		return fmt.Errorf("iiko request missing order")
+	}
 
 	req.Order.Phone = normalizePhone(req.Order.Phone)
 	if req.Order.Phone == "" {
@@ -724,11 +743,6 @@ func validateAndNormalizeIikoPickupCreate(req *structs.IikoCreateDeliveryRequest
 		}
 	}
 
-	// ✅ PICKUP endpoint => deliveryPoint talab qilinmaydi
-	// Agar siz pickupda deliveryPoint yuborishni xohlamasangiz, tozalab qo‘ysangiz ham bo‘ladi:
-	// req.Order.DeliveryPoint = nil
-
-	// PaymentTypeKind normalize
 	for i := range req.Order.Payments {
 		p := &req.Order.Payments[i]
 		switch strings.ToUpper(strings.TrimSpace(p.PaymentTypeKind)) {
@@ -740,7 +754,6 @@ func validateAndNormalizeIikoPickupCreate(req *structs.IikoCreateDeliveryRequest
 				p.IsProcessedExternally = true
 			}
 		default:
-			// leave as-is
 		}
 	}
 
