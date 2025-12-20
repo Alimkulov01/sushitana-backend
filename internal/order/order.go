@@ -55,6 +55,7 @@ type (
 		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
 		HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookEvent) error
 		HandleIikoDeliveryOrderError(ctx context.Context, evt structs.IikoWebhookEvent) error
+		BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string
 	}
 
 	service struct {
@@ -132,13 +133,19 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	}
 	req.DeliveryType = dt
 	req.PaymentMethod = pm
-	if req.DeliveryType == "PICKUP" && req.Address == nil {
-		req.Address = &structs.Address{Lat: 0, Lng: 0, Name: "", DistanceKm: 0}
-	}
-	if req.DeliveryType == "DELIVERY" && req.Address == nil {
-		return "", fmt.Errorf("address is required for delivery")
+
+	// address validation
+	if req.DeliveryType == "PICKUP" {
+		if req.Address == nil {
+			req.Address = &structs.Address{Lat: 0, Lng: 0, Name: "", DistanceKm: 0}
+		}
+	} else { // DELIVERY
+		if req.Address == nil {
+			return "", fmt.Errorf("address is required for delivery")
+		}
 	}
 
+	// 1) Create order in DB (repo already sets initial statuses based on PaymentMethod)
 	id, err := s.orderRepo.Create(ctx, req)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
@@ -154,17 +161,27 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		return "", err
 	}
 
-	var payURL string
+	// 2) For CASH: just ensure status WAITING_OPERATOR and return orderID
+	if req.PaymentMethod == "CASH" {
+		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_OPERATOR"})
+		return ord.Order.ID, nil
+	}
+
+	// 3) Online payments: set WAITING_PAYMENT and create payment_url once, save to DB.
+	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_PAYMENT"})
+
+	// idempotent: if already has link, just return orderID
+	if strings.TrimSpace(ord.Order.PaymentUrl) != "" {
+		return ord.Order.ID, nil
+	}
+
 	switch req.PaymentMethod {
 	case "CLICK":
-		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_PAYMENT"})
-
-		serviceId := os.Getenv("CLICK_SERVICE_ID")
-		merchantId := os.Getenv("CLICK_MERCHANT_ID")
+		serviceId := strings.TrimSpace(os.Getenv("CLICK_SERVICE_ID"))
+		merchantId := strings.TrimSpace(os.Getenv("CLICK_MERCHANT_ID"))
 		if serviceId == "" || merchantId == "" {
-			return "", fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
+			return ord.Order.ID, fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
 		}
-
 		merchantTransID := cast.ToString(ord.Order.OrderNumber)
 
 		amountInt := ord.Order.TotalPrice
@@ -175,13 +192,13 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			MerchantID:       merchantId,
 			TransactionParam: merchantTransID,
 			Amount:           amount,
-			Description:      fmt.Sprintf("Order #%s", merchantTransID),
+			Description:      fmt.Sprintf("Order #%d", ord.Order.OrderNumber),
 		})
 		if err != nil {
-			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_OPERATOR"})
-			return "", fmt.Errorf("click checkout/prepare failed: %w", err)
+			return ord.Order.ID, fmt.Errorf("click checkout/prepare failed: %w", err)
 		}
 
+		// invoice create
 		inv := structs.Invoice{
 			MerchantTransID: merchantTransID,
 			OrderID:         sql.NullString{String: ord.Order.ID, Valid: true},
@@ -192,34 +209,46 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			Status:          "WAITING_PAYMENT",
 		}
 		if _, err := s.clickRepo.Create(ctx, inv); err != nil {
-			return "", err
+			return ord.Order.ID, err
 		}
 
-		payURL = BuildClickPayURL(cast.ToInt64(serviceId), merchantId, int64(amountInt), merchantTransID, "")
-		_ = s.orderRepo.AddLink(ctx, payURL, ord.Order.ID)
-		return payURL, nil
+		sid := cast.ToInt64(serviceId)
+		payURL := s.BuildClickPayURL(sid, merchantId, int64(amountInt), merchantTransID, "")
+		if strings.TrimSpace(payURL) == "" {
+			return ord.Order.ID, fmt.Errorf("click pay url is empty")
+		}
+		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
+			s.logger.Error(ctx, "->orderRepo.AddLink (CLICK)", zap.Error(err), zap.String("order_id", ord.Order.ID))
+			return ord.Order.ID, err
+		}
+
+		return ord.Order.ID, nil
 
 	case "PAYME":
-		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_PAYMENT"})
-
-		merchantID := os.Getenv("PAYME_KASSA_ID")
+		merchantID := strings.TrimSpace(os.Getenv("PAYME_KASSA_ID"))
 		if merchantID == "" {
-			return "", fmt.Errorf("PAYME_KASSA_ID env not found")
+			return ord.Order.ID, fmt.Errorf("PAYME_KASSA_ID env not found")
 		}
 
 		amountTiyin := ord.Order.TotalPrice * 100
 
-		payURL, err = s.paymeSvc.BuildPaymeCheckoutURL(merchantID, cast.ToString(ord.Order.OrderNumber), amountTiyin)
+		transactionParam := cast.ToString(ord.Order.OrderNumber)
+
+		payURL, err := s.paymeSvc.BuildPaymeCheckoutURL(merchantID, transactionParam, amountTiyin)
 		if err != nil {
-			s.logger.Error(ctx, "->paymeSvc.BuildPaymeCheckoutURL failed", zap.Error(err), zap.String("order_id", id))
-			_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_OPERATOR"})
-			return "", fmt.Errorf("build payme checkout url failed: %w", err)
+			s.logger.Error(ctx, "->paymeSvc.BuildPaymeCheckoutURL failed", zap.Error(err), zap.String("order_id", ord.Order.ID))
+			return ord.Order.ID, fmt.Errorf("build payme checkout url failed: %w", err)
 		}
-		return payURL, nil
+
+		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
+			s.logger.Error(ctx, "->orderRepo.AddLink (PAYME)", zap.Error(err), zap.String("order_id", ord.Order.ID))
+			return ord.Order.ID, err
+		}
+
+		return ord.Order.ID, nil
 
 	default:
-		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_OPERATOR"})
-		return "", nil
+		return ord.Order.ID, fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
 	}
 }
 
@@ -377,7 +406,7 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 
 	return s.orderRepo.UpdateStatus(ctx, req)
 }
-func BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string {
+func (s *service) BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string {
 	v := url.Values{}
 	v.Set("service_id", cast.ToString(serviceID))
 	v.Set("merchant_id", merchantID)

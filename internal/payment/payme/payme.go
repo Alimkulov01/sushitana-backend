@@ -194,7 +194,7 @@ func (s *service) CheckPerformTransaction(ctx context.Context, p structs.PaymeCh
 
 	expected := expectedAmountTiyinFromOrderTotal(any(ord.TotalPrice))
 	if expected == 0 {
-		expected = int64(math.Round(float64(ord.TotalPrice) * 100))
+		expected = int64(math.Round(float64(ord.TotalPrice) * 100)) // ✅ *100
 	}
 
 	if p.Amount != expected {
@@ -244,7 +244,7 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 
 	expected := expectedAmountTiyinFromOrderTotal(any(ord.TotalPrice))
 	if expected == 0 {
-		expected = int64(math.Round(float64(ord.TotalPrice) * 100))
+		expected = int64(math.Round(float64(ord.TotalPrice)))
 	}
 	if p.Amount != expected {
 		return structs.PaymeCreateResult{}, rpcErr(

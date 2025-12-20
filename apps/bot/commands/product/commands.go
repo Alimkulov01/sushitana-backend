@@ -290,10 +290,8 @@ func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 
-	// 1) Avval product card (photo+inline keyboard) yuboramiz
-	c.ProductInfo(ctx)
 
-	// 2) Keyin reply keyboardni olib tashlaymiz (text bo‘sh bo‘lmasin!)
+	c.ProductInfo(ctx)
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectAmount))
 	msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 	if _, err := ctx.Bot().Send(msg); err != nil {

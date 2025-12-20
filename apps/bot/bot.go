@@ -101,9 +101,11 @@ func NewBot(p Params) error {
 		p.ProductCmd.GetCartInfoHandler(ctx)
 	})
 
+	// catalog
 	tgrouter.On(bot, tgrouter.State("category_selected"), p.ProductCmd.CategoryByProductMenu)
 	tgrouter.On(bot, tgrouter.State("product_selected"), p.ProductCmd.ProductInfoHandler)
 
+	// delivery type
 	tgrouter.On(bot, tgrouter.State("select_delivery_type"), func(ctx *tgrouter.Ctx) {
 		if ctx.Update().Message != nil {
 			account, ok := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -130,6 +132,7 @@ func NewBot(p Params) error {
 	// delivery address (location/text)
 	tgrouter.On(bot, tgrouter.State("wait_address"), p.OrderCmd.WaitAddressHandler)
 
+	// pickup branch (placeholder)
 	tgrouter.On(bot, tgrouter.State("wait_pickup_branch"), func(ctx *tgrouter.Ctx) {
 		if ctx.Update().Message == nil {
 			return
@@ -159,69 +162,15 @@ func NewBot(p Params) error {
 
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "Филиал tanlash hali yozilmagan. ⬅️ Назад bosing."))
 	})
-	tgrouter.On(bot, tgrouter.State("wait_payment"), func(ctx *tgrouter.Ctx) {
-		if ctx.Update().Message == nil {
-			return
-		}
-		chatID := ctx.Update().FromChat().ID
 
-		account, ok := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
-		if !ok || account == nil {
-			p.Logger.Error(ctx.Context, "account not found")
-			return
-		}
-		lang := account.Language
-		txt := strings.TrimSpace(ctx.Update().Message.Text)
+	// checkout preview (tasdiqlash/cancel/back logikasi order paketida)
+	tgrouter.On(bot, tgrouter.State("checkout_preview"), p.OrderCmd.CheckoutPreviewHandler)
 
-		if txt == texts.Get(lang, texts.BackButton) {
-			_ = ctx.UpdateState("wait_address", nil)
-			p.OrderCmd.AskLocationOrAddress(ctx)
-			return
-		}
+	// ✅ payment method: real handler
+	tgrouter.On(bot, tgrouter.State("select_payment_method"), p.OrderCmd.SelectPaymentMethodHandler)
+	tgrouter.On(bot, tgrouter.State("waiting_payment"), p.OrderCmd.WaitingPaymentHandler)
 
-		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, "To‘lov tanlash hali yozilmagan. ⬅️ Назад bosing."))
-	})
-
-	tgrouter.On(bot, tgrouter.State("checkout_preview"), func(ctx *tgrouter.Ctx) {
-		if ctx.Update().Message != nil {
-			account, ok := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
-			if ok && account != nil {
-				lang := account.Language
-				txt := ctx.Update().Message.Text
-
-				if txt == texts.Get(lang, texts.BackButton) {
-					_, data, _ := ctx.GetState()
-					if data == nil {
-						data = map[string]string{}
-					}
-
-					if strings.ToUpper(data["deliveryType"]) == "DELIVERY" {
-						_ = ctx.UpdateState("wait_address", data)
-						p.OrderCmd.AskLocationOrAddress(ctx)
-						return
-					}
-
-					_ = ctx.UpdateState("select_delivery_type", data)
-					p.OrderCmd.Confirm(ctx)
-					return
-				}
-
-				if txt == texts.Get(lang, texts.CancelBtn) { 
-					_, data, _ := ctx.GetState()
-					if data == nil {
-						data = map[string]string{}
-					}
-					_ = ctx.UpdateState("get_cart", data)
-					p.ProductCmd.ShowCartView(ctx)
-					return
-				}
-			}
-		}
-
-		// ✅ Tasdiqlash ni order paketi ichida handle qilamiz
-		p.OrderCmd.CheckoutPreviewHandler(ctx)
-	})
-
+	// callbacks
 	tgrouter.On(bot, tgrouter.Callback(""), func(ctx *tgrouter.Ctx) {
 		if ctx.Update().CallbackQuery == nil {
 			return
@@ -269,17 +218,10 @@ func registerClientCommands(tb *tgbotapi.BotAPI) {
 	_, _ = tb.Request(cfg)
 }
 
-func sameBtn(got, want string) bool {
-	got = strings.TrimSpace(strings.ReplaceAll(got, "\uFE0F", ""))
-	want = strings.TrimSpace(strings.ReplaceAll(want, "\uFE0F", ""))
-	return got == want
-}
-
 func normBtn(s string) string {
 	s = strings.TrimSpace(strings.ToLower(s))
-	s = strings.ReplaceAll(s, "\uFE0F", "") // emoji variation selector
+	s = strings.ReplaceAll(s, "\uFE0F", "")
 
-	// faqat harf/raqam qoldiramiz
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {

@@ -98,7 +98,7 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) (id string, e
 	if _, err := r.db.Exec(ctx, query,
 		id,
 		req.TgID,
-		req.DeliveryType,
+		deliveryType,
 		req.PaymentMethod,
 		paymentStatus,
 		status,
@@ -117,25 +117,6 @@ func (r repo) Create(ctx context.Context, req structs.CreateOrder) (id string, e
 	return id, err
 }
 
-func (r repo) getProductPrice(ctx context.Context, productID string) (int64, structs.Name, string, error) {
-	query := `
-        SELECT (size_prices->0->'price'->>'currentPrice')::bigint,
-			name,
-			img_url
-        FROM product
-        WHERE id = $1
-    `
-	var (
-		price int64
-		name  structs.Name
-		url   string
-	)
-	err := r.db.QueryRow(ctx, query, productID).Scan(&price, &name, &url)
-	if err != nil {
-		return 0, structs.Name{}, "", err
-	}
-	return price, name, url, nil
-}
 func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOrderByTgIDResponse, err error) {
 	r.logger.Info(ctx, "Get orders by tgId", zap.Any("tgId", tgId))
 
@@ -238,6 +219,7 @@ func (r repo) GetByID(ctx context.Context, id string) (resp structs.GetListPrima
 			o.items,
 			o.delivery_price,
 			o.order_number,
+			COALESCE(o.payment_url, '') AS payment_url,
 			o.created_at,
 			o.updated_at,
 			c.phone
@@ -261,6 +243,7 @@ func (r repo) GetByID(ctx context.Context, id string) (resp structs.GetListPrima
 		&order.Products,
 		&order.DeliveryPrice,
 		&order.OrderNumber,
+		&order.PaymentUrl,
 		&order.CreatedAt,
 		&order.UpdateAt,
 		&resp.Phone,

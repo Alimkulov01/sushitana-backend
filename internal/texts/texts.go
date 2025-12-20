@@ -8,48 +8,54 @@ type TextKey = string
 
 const (
 	// Common
-	Welcome               TextKey = "welcome"
-	MenuButtonWebAppInfo  TextKey = "menu_button_web_app_info"
-	MenuButtonWebAppUrl   TextKey = "menu_button_web_app_url"
-	AllLanguageInfo       TextKey = "all_language_info"
-	Language              TextKey = "language"
-	SetNameClient         TextKey = "set_name_client"
-	Retry                 TextKey = "retry"
-	SuccessChangeLanguage TextKey = "success_change_language"
-	MenuButton            TextKey = "menu_button"
-	FeedbackButton        TextKey = "feedback_button"
-	InfoButton            TextKey = "info_button"
-	ContactButton         TextKey = "contact_button"
-	LanguageButton        TextKey = "language_button"
-	SelectFromMenu        TextKey = "select_from_menu"
-	TypeLanguage          TextKey = "type_language"
-	Contact               TextKey = "contact"
-	BackButton            TextKey = "back_button"
-	AddToCart             TextKey = "add_to_cart"
-	SelectAmount          TextKey = "select_amount"
-	CurrencySymbol        TextKey = "currency_symbol"
-	AddedToCart           TextKey = "added_to_cart"
-	Cart                  TextKey = "cart"
-	CartInfoMsg           TextKey = "cart_info_msg"
-	CartClear             TextKey = "cart_clear"
-	CartTotal             TextKey = "cart_total"
-	CartConfirm           TextKey = "cart_confirm"
-	CartEmpty             TextKey = "cart_empty"
-	CartItemDeleteHint    TextKey = "cart_item_delete_hint"
-	CartQtyHint           TextKey = "cart_qty_hint"
-	CartClearHint         TextKey = "cart_clear_hint"
-	DeliveryBtn           TextKey = "delivery_btn"
-	PickupBtn             TextKey = "pickup_btn"
-	SelectDeliveryType    TextKey = "select_delivery_type"
-	AskSendLocation       TextKey = "ask_send_location"
-	SendLocationBtn       TextKey = "send_location_btn"
-	CancelBtn             TextKey = "cancel_btn"
-	OrderPreviewTitle     TextKey = "order_preview_title"
-	OrderPreviewName      TextKey = "order_preview_name"
-	OrderPreviewPhone     TextKey = "order_preview_phone"
-	OrderPreviewTotal     TextKey = "order_preview_total"
-	OrderTypeDelivery     TextKey = "order_type_delivery"
-	OrderTypePickup       TextKey = "order_type_pickup"
+	Welcome                       TextKey = "welcome"
+	MenuButtonWebAppInfo          TextKey = "menu_button_web_app_info"
+	MenuButtonWebAppUrl           TextKey = "menu_button_web_app_url"
+	AllLanguageInfo               TextKey = "all_language_info"
+	Language                      TextKey = "language"
+	SetNameClient                 TextKey = "set_name_client"
+	Retry                         TextKey = "retry"
+	SuccessChangeLanguage         TextKey = "success_change_language"
+	MenuButton                    TextKey = "menu_button"
+	FeedbackButton                TextKey = "feedback_button"
+	InfoButton                    TextKey = "info_button"
+	ContactButton                 TextKey = "contact_button"
+	LanguageButton                TextKey = "language_button"
+	SelectFromMenu                TextKey = "select_from_menu"
+	TypeLanguage                  TextKey = "type_language"
+	Contact                       TextKey = "contact"
+	BackButton                    TextKey = "back_button"
+	AddToCart                     TextKey = "add_to_cart"
+	SelectAmount                  TextKey = "select_amount"
+	CurrencySymbol                TextKey = "currency_symbol"
+	AddedToCart                   TextKey = "added_to_cart"
+	Cart                          TextKey = "cart"
+	CartInfoMsg                   TextKey = "cart_info_msg"
+	CartClear                     TextKey = "cart_clear"
+	CartTotal                     TextKey = "cart_total"
+	CartConfirm                   TextKey = "cart_confirm"
+	CartEmpty                     TextKey = "cart_empty"
+	CartItemDeleteHint            TextKey = "cart_item_delete_hint"
+	CartQtyHint                   TextKey = "cart_qty_hint"
+	CartClearHint                 TextKey = "cart_clear_hint"
+	DeliveryBtn                   TextKey = "delivery_btn"
+	PickupBtn                     TextKey = "pickup_btn"
+	SelectDeliveryType            TextKey = "select_delivery_type"
+	AskSendLocation               TextKey = "ask_send_location"
+	SendLocationBtn               TextKey = "send_location_btn"
+	CancelBtn                     TextKey = "cancel_btn"
+	OrderPreviewTitle             TextKey = "order_preview_title"
+	OrderPreviewName              TextKey = "order_preview_name"
+	OrderPreviewPhone             TextKey = "order_preview_phone"
+	OrderPreviewTotal             TextKey = "order_preview_total"
+	OrderTypeDelivery             TextKey = "order_type_delivery"
+	OrderTypePickup               TextKey = "order_type_pickup"
+	OrderDeliveryTypeChoose       TextKey = "order_delivery_type_choose"
+	DeliveryTypeDelivery          TextKey = "delivery_type_delivery"
+	OrderChoosePaymentMethod      TextKey = "order_choose_payment_method"
+	OrderFinishPayment            TextKey = "order_finish_payment"
+	OrderAcceptedWaitOperator     TextKey = "order_accepted_wait_operator"
+	OrderAddressSavedSendLocation TextKey = "order_address_saved_send_location"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -316,6 +322,31 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "🚶 Buyurtma turi: Olib ketish",
 		RU: "🚶 Тип заказа: Самовывоз",
 		EN: "🚶 Order type: Pickup",
+	},
+	OrderDeliveryTypeChoose: {
+		UZ: "Yetkazib berish turini tanlang:",
+		RU: "Выберите способ получения:",
+		EN: "Choose delivery method:",
+	},
+	OrderChoosePaymentMethod: {
+		UZ: "To‘lov turini tanlang:",
+		RU: "Выберите способ оплаты:",
+		EN: "Choose payment method:",
+	},
+	OrderFinishPayment: {
+		UZ: "To‘lovni yakunlang:",
+		RU: "Завершите оплату:",
+		EN: "Complete the payment:",
+	},
+	OrderAcceptedWaitOperator: {
+		UZ: "Buyurtma qabul qilindi ✅ Operator tasdiqlashini kuting.",
+		RU: "Заказ принят ✅ Ожидайте подтверждения оператора.",
+		EN: "Order accepted ✅ Please wait for operator confirmation.",
+	},
+	OrderAddressSavedSendLocation: {
+		UZ: "Manzil saqlandi ✅ Endi lokatsiyani yuboring.",
+		RU: "Адрес сохранён ✅ Теперь отправьте геолокацию.",
+		EN: "Address saved ✅ Now share your location.",
 	},
 }
 
