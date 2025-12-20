@@ -262,8 +262,16 @@ func (c *Commands) WaitAddressHandler(ctx *tgrouter.Ctx) {
 	}
 }
 
-// 4) Preview ko‘rsatish
+// Preview ko‘rsatish (rasmdagi formatga yaqin)
+// - Client: name/phone
+// - DeliveryType: DELIVERY / PICKUP -> "Доставка"/"Самовывоз" (RU) yoki "Yetkazib berish"/"Olib ketish" (UZ)
+// - Cart items: 1. name \n 1 x price = total
+// - Total: products + delivery
 func (c *Commands) ShowCheckoutPreview(ctx *tgrouter.Ctx) {
+	if ctx.Update().Message == nil {
+		// callback bo‘lsa ham ishlashi mumkin; chatID olishni moslang
+	}
+
 	chatID := ctx.Update().FromChat().ID
 
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -272,13 +280,19 @@ func (c *Commands) ShowCheckoutPreview(ctx *tgrouter.Ctx) {
 	}
 	lang := account.Language
 
+	// cart
 	crt, err := c.cartSvc.GetByUserTgID(ctx.Context, account.TgID)
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get cart", zap.Error(err))
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
+	if len(crt.Cart.Products) == 0 {
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.CartEmpty)))
+		return
+	}
 
+	// state
 	_, st, _ := ctx.GetState()
 	if st == nil {
 		st = map[string]string{}
@@ -289,64 +303,97 @@ func (c *Commands) ShowCheckoutPreview(ctx *tgrouter.Ctx) {
 		deliveryType = "DELIVERY"
 	}
 
-	var productsTotal float64
-	var b strings.Builder
-
-	// header
-	if strings.ToLower(string(lang)) == "uz" {
-		b.WriteString("🛒 Savat:\n\n")
-	} else {
-		b.WriteString("🛒 Корзина:\n\n")
+	// delivery price (so'm)
+	var deliveryPrice int64
+	if deliveryType == "DELIVERY" {
+		deliveryPrice = cast.ToInt64(strings.TrimSpace(st["deliveryPrice"]))
 	}
 
-	// items
+	// Header
+	var b strings.Builder
+	// Rasmda RU: "📁 Ваш заказ:"
+	if strings.ToLower(string(lang)) == "uz" {
+		b.WriteString("📁 Buyurtmangiz:\n\n")
+	} else {
+		b.WriteString("📁 Ваш заказ:\n\n")
+	}
+
+	// Client info (rasmdagi)
+	// account.Name / account.Phone sizda bor
+	name := strings.TrimSpace(account.Name)
+	phone := strings.TrimSpace(account.Phone)
+
+	if strings.ToLower(string(lang)) == "uz" {
+		if name != "" {
+			fmt.Fprintf(&b, "👤 Ism: %s\n", name)
+		}
+		if phone != "" {
+			fmt.Fprintf(&b, "📞 Telefon: %s\n", phone)
+		}
+		if deliveryType == "PICKUP" {
+			b.WriteString("🚶 Buyurtma turi: Olib ketish\n\n")
+		} else {
+			b.WriteString("🚶 Buyurtma turi: Yetkazib berish\n\n")
+		}
+	} else {
+		if name != "" {
+			fmt.Fprintf(&b, "👤 Имя: %s\n", name)
+		}
+		if phone != "" {
+			fmt.Fprintf(&b, "📞 Телефон: %s\n", phone)
+		}
+		if deliveryType == "PICKUP" {
+			b.WriteString("🚶 Тип заказа: Самовывоз\n\n")
+		} else {
+			b.WriteString("🚶 Тип заказа: Доставка\n\n")
+		}
+	}
+
+	// Items
+	var productsTotal int64
 	for i, p := range crt.Cart.Products {
-		name := nameByLang(p.Name, string(lang))
-		lineTotal := float64(p.Count) * float64(p.Price)
+		// p.Price (so'm) va p.Count
+		// nameByLang sizda bor
+		itemName := nameByLang(p.Name, string(lang))
+		price := int64(p.Price)
+		qty := int64(p.Count)
+
+		lineTotal := qty * price
 		productsTotal += lineTotal
 
-		fmt.Fprintf(&b, "%d. %s\n   %d x %s = %s %s\n\n",
-			i+1,
-			name,
-			p.Count,
-			utils.FCurrency(cast.ToFloat64(p.Price)),
-			utils.FCurrency(lineTotal),
-			texts.Get(lang, texts.CurrencySymbol),
+		// rasmga mos:
+		// 1. мусс кокос
+		// 1 x 50000 = 50000
+		fmt.Fprintf(&b, "%d. %s\n", i+1, itemName)
+		fmt.Fprintf(&b, "%d x %s = %s\n\n",
+			qty,
+			utils.FCurrency(float64(price)),
+			utils.FCurrency(float64(lineTotal)),
 		)
 	}
 
-	// delivery price
-	var deliveryPrice float64
-	if deliveryType == "DELIVERY" {
-		if v := strings.TrimSpace(st["deliveryPrice"]); v != "" {
-			deliveryPrice = cast.ToFloat64(v)
-		}
-		// dist := strings.TrimSpace(st["distanceKm"])
-
+	// delivery line (agar DELIVERY bo'lsa ko'rsatamiz)
+	if deliveryType == "DELIVERY" && deliveryPrice > 0 {
 		if strings.ToLower(string(lang)) == "uz" {
-			fmt.Fprintf(&b, "🚚 Yetkazib berish: %s %s\n", utils.FCurrency(deliveryPrice), texts.Get(lang, texts.CurrencySymbol))
-			// if dist != "" && dist != "0" {
-			// 	fmt.Fprintf(&b, "📍 Masofa: %s km\n", dist)
-			// }
+			fmt.Fprintf(&b, "🚚 Yetkazib berish: %s\n\n", utils.FCurrency(float64(deliveryPrice)))
 		} else {
-			fmt.Fprintf(&b, "🚚 Доставка: %s %s\n", utils.FCurrency(deliveryPrice), texts.Get(lang, texts.CurrencySymbol))
-			// if dist != "" && dist != "0" {
-			// 	fmt.Fprintf(&b, "📍 Расстояние: %s km\n", dist)
-			// }
+			fmt.Fprintf(&b, "🚚 Доставка: %s\n\n", utils.FCurrency(float64(deliveryPrice)))
 		}
 	}
 
-			// sizning OrderProduct struct'ingizda yana fieldlar bo'lsa (imgUrl, boxId, etc)
-			// shu yerda to'ldirasiz:
-			// ImgUrl: it.ImgUrl,
-			// BoxID:  it.BoxId,
 	grand := productsTotal + deliveryPrice
 
-	// total
+	// Total line (rasmda: 💰 Итого: 50000 сум)
 	if strings.ToLower(string(lang)) == "uz" {
-		fmt.Fprintf(&b, "\n🧾 Jami: %s %s", utils.FCurrency(grand), texts.Get(lang, texts.CurrencySymbol))
+		fmt.Fprintf(&b, "💰 Jami: %s %s",
+			utils.FCurrency(float64(grand)),
+			texts.Get(lang, texts.CurrencySymbol),
+		)
 	} else {
-		fmt.Fprintf(&b, "\n🧾 Итого: %s %s", utils.FCurrency(grand), texts.Get(lang, texts.CurrencySymbol))
+		fmt.Fprintf(&b, "💰 Итого: %s %s",
+			utils.FCurrency(float64(grand)),
+			texts.Get(lang, texts.CurrencySymbol),
+		)
 	}
 
 	msg := tgbotapi.NewMessage(chatID, b.String())
