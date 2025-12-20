@@ -325,7 +325,7 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 	case "DELIVERY":
 		resp, err = s.iikoSvc.CreateOrder(ctx, iikoReq) // deliveries/create
 	case "PICKUP":
-		resp, err = s.iikoSvc.CreatePickup(ctx, iikoReq) // ✅ orders/create (variant B)
+		resp, err = s.iikoSvc.CreateOrder(ctx, iikoReq) // ✅ orders/create (variant B)
 	default:
 		return fmt.Errorf("unknown DeliveryType=%s", ord.Order.DeliveryType)
 	}
