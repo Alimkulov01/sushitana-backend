@@ -708,7 +708,21 @@ func (s *service) notifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 		return
 	}
 
+	s.logger.Info(ctx, "notifyOrderStatusIfNeeded called",
+		zap.String("orderId", orderID),
+		zap.String("newStatus", newStatus),
+		zap.Bool("bot_nil", s.bot == nil),
+	)
+
 	target, ok, err := s.orderRepo.TryMarkNotified(ctx, orderID, newStatus)
+	s.logger.Info(ctx, "TryMarkNotified result",
+		zap.String("orderId", orderID),
+		zap.String("newStatus", newStatus),
+		zap.Bool("ok", ok),
+		zap.Int64("tgId", target.TgID),
+		zap.Int64("orderNumber", int64(target.OrderNumber)),
+		zap.Error(err),
+	)
 	if err != nil {
 		s.logger.Error(ctx, "TryMarkNotified failed",
 			zap.String("orderId", orderID),
