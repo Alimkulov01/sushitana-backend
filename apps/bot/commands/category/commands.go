@@ -68,7 +68,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	var row []tgbotapi.KeyboardButton
 
 	for _, cat := range cats.Categories {
-		name := getCategoryNameByLang(lang, cat.Name)
+		name := getCategoryNameByLang(utils.RU, cat.Name)
 		btn := tgbotapi.NewKeyboardButton(name)
 		row = append(row, btn)
 		if len(row) == 2 {

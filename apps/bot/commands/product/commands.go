@@ -173,7 +173,7 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 	var row []tgbotapi.KeyboardButton
 
 	for _, cat := range cats.Categories {
-		name := getCategoryNameByLang(lang, cat.Name)
+		name := getCategoryNameByLang(utils.RU, cat.Name)
 		btn := tgbotapi.NewKeyboardButton(name)
 		row = append(row, btn)
 
@@ -231,7 +231,7 @@ func (c *Commands) CategoryByProductMenu(ctx *tgrouter.Ctx) {
 	var row []tgbotapi.KeyboardButton
 
 	for _, prod := range products {
-		name := getProductNameByLang(lang, prod.Name)
+		name := getProductNameByLang(utils.RU, prod.Name)
 		btn := tgbotapi.NewKeyboardButton(name)
 		row = append(row, btn)
 		if len(row) == 2 {
@@ -290,7 +290,6 @@ func (c *Commands) ProductInfoHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 
-
 	c.ProductInfo(ctx)
 	msg := tgbotapi.NewMessage(chatID, texts.Get(lang, texts.SelectAmount))
 	msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
@@ -321,8 +320,8 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 		return
 	}
 
-	name := getProductNameByLang(lang, resp.Name)
-	description := getProductDescriptionByLang(lang, resp.Description)
+	name := getProductNameByLang(utils.RU, resp.Name)
+	description := getProductDescriptionByLang(utils.RU, resp.Description)
 
 	// -------- caption ----------
 	var b strings.Builder
@@ -401,7 +400,6 @@ func (c *Commands) ProductInfo(ctx *tgrouter.Ctx) {
 		_, _ = ctx.Bot().Send(msg)
 	}
 }
-
 
 func (c *Commands) Callback(ctx *tgrouter.Ctx) {
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
@@ -677,7 +675,7 @@ func (c *Commands) CategoryByProductMenuCallback(ctx *tgrouter.Ctx) {
 		)
 	}
 	for _, prod := range products {
-		prodName := getProductNameByLang(lang, prod.Name)
+		prodName := getProductNameByLang(utils.RU, prod.Name)
 		btn := tgbotapi.NewKeyboardButton(prodName)
 		row = append(row, btn)
 		if len(row) == 2 {
@@ -843,7 +841,7 @@ func (c *Commands) buildCartView(lang utils.Lang, items structs.GetCartByTgID) (
 	var rows [][]tgbotapi.InlineKeyboardButton
 
 	for i, it := range products {
-		name := getProductNameByLang(lang, it.Name)
+		name := getProductNameByLang(utils.RU, it.Name)
 
 		unit := cast.ToInt64(it.Price)
 		count := cast.ToInt64(it.Count)

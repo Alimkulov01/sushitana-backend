@@ -2,6 +2,7 @@ package orderrepo
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -38,6 +39,7 @@ type (
 		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
 		UpdateClickInfo(ctx context.Context, orderID, requestID, transactionParam string) error
 		UpdateIikoMeta(ctx context.Context, orderID, iikoOrderID, iikoPosID, corrID string) error
+		TryMarkNotified(ctx context.Context, orderID string, st string) (structs.NotifyTarget, bool, error)
 	}
 
 	repo struct {
@@ -796,4 +798,23 @@ func (r repo) enrichOrder(ctx context.Context, order *structs.Order, prodCache m
 	order.TotalCount = totalItems
 	order.OrderPriceForIIKO = orderTotal + boxTotal
 	order.TotalPrice = orderTotal + boxTotal + order.DeliveryPrice
+}
+
+func (r *repo) TryMarkNotified(ctx context.Context, orderID string, st string) (structs.NotifyTarget, bool, error) {
+	var t structs.NotifyTarget
+	err := r.db.QueryRow(ctx, `
+        UPDATE orders
+        SET last_notified_status = $2, updated_at = NOW()
+        WHERE id = $1
+          AND (last_notified_status IS NULL OR last_notified_status <> $2)
+        RETURNING tg_id, order_number
+    `, orderID, st).Scan(&t.TgID, &t.OrderNumber)
+
+	if err == sql.ErrNoRows {
+		return structs.NotifyTarget{}, false, nil
+	}
+	if err != nil {
+		return structs.NotifyTarget{}, false, err
+	}
+	return t, true, nil
 }

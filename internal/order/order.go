@@ -17,10 +17,15 @@ import (
 	"sushitana/internal/payment/payme"
 	shopapi "sushitana/internal/payment/shop-api"
 	"sushitana/internal/structs"
+	"sushitana/internal/texts"
 	"sushitana/pkg/logger"
+	"sushitana/pkg/utils"
+
+	clientrepo "sushitana/pkg/repository/postgres/client_repo"
 	orderrepo "sushitana/pkg/repository/postgres/order_repo"
 	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
 
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 	"github.com/spf13/cast"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -33,8 +38,11 @@ var (
 type (
 	Params struct {
 		fx.In
-		OrderRepo orderrepo.Repo
-		ClickRepo clickrepo.Repo
+
+		OrderRepo  orderrepo.Repo
+		ClickRepo  clickrepo.Repo
+		ClientRepo clientrepo.Repo
+		Bot        *tgbotapi.BotAPI `optional:"true"`
 
 		ClickSvc click.Service
 		ShopSvc  shopapi.Service
@@ -53,15 +61,20 @@ type (
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
 		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
+
 		HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookEvent) error
 		HandleIikoDeliveryOrderError(ctx context.Context, evt structs.IikoWebhookEvent) error
+
 		BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string
 	}
 
 	service struct {
-		orderRepo orderrepo.Repo
-		clickRepo clickrepo.Repo
-		logger    logger.Logger
+		orderRepo  orderrepo.Repo
+		clickRepo  clickrepo.Repo
+		clientRepo clientrepo.Repo
+		bot        *tgbotapi.BotAPI `optional:"true"`
+
+		logger logger.Logger
 
 		clickSvc click.Service
 		paymeSvc payme.Service
@@ -72,13 +85,17 @@ type (
 
 func New(p Params) Service {
 	return &service{
-		orderRepo: p.OrderRepo,
-		clickRepo: p.ClickRepo,
-		logger:    p.Logger,
-		clickSvc:  p.ClickSvc,
-		paymeSvc:  p.PaymeSvc,
-		shopSvc:   p.ShopSvc,
-		iikoSvc:   p.IikoSvc,
+		orderRepo:  p.OrderRepo,
+		clickRepo:  p.ClickRepo,
+		clientRepo: p.ClientRepo,
+
+		logger:   p.Logger,
+		clickSvc: p.ClickSvc,
+		paymeSvc: p.PaymeSvc,
+		shopSvc:  p.ShopSvc,
+		iikoSvc:  p.IikoSvc,
+
+		bot: p.Bot,
 	}
 }
 
@@ -145,7 +162,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		}
 	}
 
-	// 1) Create order in DB (repo already sets initial statuses based on PaymentMethod)
+	// 1) Create order in DB
 	id, err := s.orderRepo.Create(ctx, req)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
@@ -231,7 +248,6 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		}
 
 		amountTiyin := ord.Order.TotalPrice * 100
-
 		transactionParam := cast.ToString(ord.Order.OrderNumber)
 
 		payURL, err := s.paymeSvc.BuildPaymeCheckoutURL(merchantID, transactionParam, amountTiyin)
@@ -302,7 +318,7 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		return err
 	}
 
-	// ✅ 3) status: xohlasangiz SENT_TO_IIKO qiling, yoki statusni o‘zgartirmasdan ham bo‘ladi
+	// ixtiyoriy status
 	if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 		OrderId: orderID,
 		Status:  "SENT_TO_IIKO",
@@ -334,20 +350,15 @@ func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateSta
 	switch pStatus {
 	case "PAID":
 		if paymentMethod == "CLICK" || paymentMethod == "PAYME" {
-
-			// address bo'lmasa yubormaymiz
 			if deliveryType == "DELIVERY" && ord.Order.Address == nil {
 				return fmt.Errorf("paid but address missing")
 			}
 
-			// iiko create (async tavsiya)
 			go func(orderID string) {
 				_ = s.sendToIikoIfAllowed(context.Background(), orderID)
 			}(req.OrderId)
 			return nil
 		}
-
-		// CASH bo'lsa PAID bo'lmaydi odatda; lekin bo'lsa ham ixtiyoriy:
 		return nil
 
 	case "PENDING", "UNPAID":
@@ -406,6 +417,7 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 
 	return s.orderRepo.UpdateStatus(ctx, req)
 }
+
 func (s *service) BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string {
 	v := url.Values{}
 	v.Set("service_id", cast.ToString(serviceID))
@@ -572,13 +584,17 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		Order: iikoOrder,
 	}, nil
 }
+
+// --- NOTIFY PART ---
+
 func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookEvent) error {
 	s.logger.Info(ctx, "IIKO webhook handling",
 		zap.String("eventType", evt.EventType),
 		zap.String("externalNumber", evt.EventInfo.ExternalNumber),
 		zap.String("creationStatus", evt.EventInfo.CreationStatus),
 	)
-	if strings.ToUpper(evt.EventType) != "DELIVERYORDERUPDATE" {
+
+	if strings.ToUpper(strings.TrimSpace(evt.EventType)) != "DELIVERYORDERUPDATE" {
 		return nil
 	}
 
@@ -605,13 +621,6 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		return err
 	}
 
-	s.logger.Info(ctx, "IIKO webhook matched local order",
-		zap.String("orderId", ord.ID),
-		zap.Int64("orderNumber", ord.OrderNumber),
-		zap.String("currentStatus", ord.Status),
-		zap.String("currentPaymentStatus", ord.PaymentStatus),
-	)
-
 	if strings.ToUpper(strings.TrimSpace(evt.EventInfo.CreationStatus)) != "SUCCESS" {
 		s.logger.Warn(ctx, "IIKO webhook creationStatus not SUCCESS -> REJECTED",
 			zap.String("creationStatus", evt.EventInfo.CreationStatus),
@@ -620,27 +629,17 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: "REJECTED"})
 		return nil
 	}
+
+	// iiko meta
 	if err := s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationId); err != nil {
 		s.logger.Error(ctx, "IIKO webhook UpdateIikoMeta failed",
 			zap.String("orderId", ord.ID),
 			zap.Error(err),
 		)
-	} else {
-		s.logger.Info(ctx, "IIKO webhook iiko meta updated",
-			zap.String("orderId", ord.ID),
-			zap.String("iikoOrderId", evt.EventInfo.ID),
-			zap.String("posId", evt.EventInfo.PosID),
-			zap.String("correlationId", evt.CorrelationId),
-		)
 	}
+
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
 	newStatus := mapIikoStatusToOurStatus(iikoStatus)
-
-	s.logger.Info(ctx, "IIKO webhook status mapping",
-		zap.String("orderId", ord.ID),
-		zap.String("iikoStatus", iikoStatus),
-		zap.String("mappedStatus", newStatus),
-	)
 
 	if newStatus == "" {
 		return nil
@@ -655,11 +654,55 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		return err
 	}
 
-	s.logger.Info(ctx, "IIKO webhook UpdateStatus OK",
-		zap.String("orderId", ord.ID),
-		zap.String("status", newStatus),
-	)
+	// ✅ notify (idempotent)
+	s.notifyOrderStatusIfNeeded(ctx, ord.ID, newStatus)
+
 	return nil
+}
+
+func (s *service) notifyOrderStatusIfNeeded(ctx context.Context, orderID string, newStatus string) {
+	if s.bot == nil {
+		return
+	}
+
+	target, ok, err := s.orderRepo.TryMarkNotified(ctx, orderID, newStatus)
+	if err != nil {
+		s.logger.Error(ctx, "TryMarkNotified failed",
+			zap.String("orderId", orderID),
+			zap.String("status", newStatus),
+			zap.Error(err),
+		)
+		return
+	}
+	if !ok || target.TgID == 0 {
+		return
+	}
+
+	lang := utils.UZ // default
+
+	if s.clientRepo != nil {
+		l, e := s.clientRepo.GetLanguageByTgID(ctx, target.TgID) // l string
+		if e == nil {
+			if ll, ok := toLang(l); ok {
+				lang = ll
+			}
+		}
+	}
+
+	key := statusTextKey(newStatus)
+	statusText := newStatus
+	if key != "" {
+		statusText = texts.Get(lang, key)
+	}
+
+	msg := fmt.Sprintf("📦 Zakaz #%d holati: %s", target.OrderNumber, statusText)
+	_, e := s.bot.Send(tgbotapi.NewMessage(target.TgID, msg))
+	if e != nil {
+		s.logger.Warn(ctx, "Telegram notify failed",
+			zap.Int64("tg_id", target.TgID),
+			zap.Error(e),
+		)
+	}
 }
 
 func (s *service) HandleIikoDeliveryOrderError(ctx context.Context, evt structs.IikoWebhookEvent) error {
@@ -683,11 +726,11 @@ func (s *service) HandleIikoDeliveryOrderError(ctx context.Context, evt structs.
 	}
 
 	_ = s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationId)
-
-	// bu yerda siz REJECTED yoki FAILED_IIKO kabi status ishlating
 	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: "REJECTED"})
 
-	// xohlasangiz errorInfo ni log qiling
+	// xohlasangiz REJECTED ni ham notify qilish mumkin:
+	s.notifyOrderStatusIfNeeded(ctx, ord.ID, "REJECTED")
+
 	if evt.EventInfo.ErrorInfo != nil {
 		s.logger.Error(ctx, "IIKO order creation error",
 			zap.String("order_id", ord.ID),
@@ -701,7 +744,6 @@ func (s *service) HandleIikoDeliveryOrderError(ctx context.Context, evt structs.
 }
 
 func extractIikoOrderStatus(raw json.RawMessage) string {
-
 	if len(raw) == 0 {
 		return ""
 	}
@@ -709,7 +751,6 @@ func extractIikoOrderStatus(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return ""
 	}
-	// ko'p uchraydigan nomlar
 	if v, ok := m["status"].(string); ok {
 		return v
 	}
@@ -729,17 +770,56 @@ func mapIikoStatusToOurStatus(iikoStatus string) string {
 		return "CANCELLED"
 	case strings.Contains(s, "REJECT"):
 		return "REJECTED"
+	case strings.Contains(s, "DELIVERED"):
+		return "DELIVERED"
 	case strings.Contains(s, "COOK"):
 		return "COOKING"
 	case strings.Contains(s, "READY"):
 		return "READY_FOR_PICKUP"
-	case strings.Contains(s, "WAY") || strings.Contains(s, "COURIER") || strings.Contains(s, "DELIVERY"):
+	case strings.Contains(s, "WAY") || strings.Contains(s, "COURIER") || strings.Contains(s, "DELIVERY") || strings.Contains(s, "ONWAY"):
 		return "ON_THE_WAY"
-	case strings.Contains(s, "DELIVERED"):
-		return "DELIVERED"
 	case strings.Contains(s, "CLOSE") || strings.Contains(s, "COMPLETE"):
 		return "COMPLETED"
 	default:
 		return ""
+	}
+}
+
+func statusTextKey(st string) texts.TextKey {
+	switch st {
+	case "WAITING_PAYMENT":
+		return texts.OrderStatusWaitingPayment
+	case "WAITING_OPERATOR":
+		return texts.OrderStatusWaitingOperator
+	case "COOKING":
+		return texts.OrderStatusCooking
+	case "READY_FOR_PICKUP":
+		return texts.OrderStatusReadyForPickup
+	case "ON_THE_WAY":
+		return texts.OrderStatusOnTheWay
+	case "DELIVERED":
+		return texts.OrderStatusDelivered
+	case "COMPLETED":
+		return texts.OrderStatusCompleted
+	case "CANCELLED":
+		return texts.OrderStatusCancelled
+	case "REJECTED":
+		return texts.OrderStatusRejected
+	default:
+		return ""
+	}
+}
+
+func toLang(s string) (utils.Lang, bool) {
+	v := strings.ToLower(strings.TrimSpace(s))
+	switch v {
+	case "uz":
+		return utils.UZ, true
+	case "ru":
+		return utils.RU, true
+	case "en":
+		return utils.EN, true
+	default:
+		return utils.UZ, false
 	}
 }

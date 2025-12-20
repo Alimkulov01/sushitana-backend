@@ -245,3 +245,8 @@ type IikoErrorInfo struct {
 	Code        string `json:"code,omitempty"`
 	Description string `json:"description,omitempty"`
 }
+
+type NotifyTarget struct {
+	TgID        int64
+	OrderNumber int64
+}

@@ -56,6 +56,20 @@ const (
 	OrderFinishPayment            TextKey = "order_finish_payment"
 	OrderAcceptedWaitOperator     TextKey = "order_accepted_wait_operator"
 	OrderAddressSavedSendLocation TextKey = "order_address_saved_send_location"
+	// Order status notify
+	OrderNotifyTitle      TextKey = "order_notify_title"
+	OrderNotifyStatusLine TextKey = "order_notify_status_line" // format: "Holat: %s"
+
+	// Status labels
+	OrderStatusWaitingPayment  TextKey = "order_status_waiting_payment"
+	OrderStatusWaitingOperator TextKey = "order_status_waiting_operator"
+	OrderStatusCooking         TextKey = "order_status_cooking"
+	OrderStatusReadyForPickup  TextKey = "order_status_ready_for_pickup"
+	OrderStatusOnTheWay        TextKey = "order_status_on_the_way"
+	OrderStatusDelivered       TextKey = "order_status_delivered"
+	OrderStatusCompleted       TextKey = "order_status_completed"
+	OrderStatusCancelled       TextKey = "order_status_cancelled"
+	OrderStatusRejected        TextKey = "order_status_rejected"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -347,6 +361,62 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "Manzil saqlandi ✅ Endi lokatsiyani yuboring.",
 		RU: "Адрес сохранён ✅ Теперь отправьте геолокацию.",
 		EN: "Address saved ✅ Now share your location.",
+	},
+	OrderNotifyTitle: {
+		UZ: "📦 Zakaz holati",
+		RU: "📦 Статус заказа",
+		EN: "📦 Order status",
+	},
+	OrderNotifyStatusLine: {
+		UZ: "Holat: %s",
+		RU: "Статус: %s",
+		EN: "Status: %s",
+	},
+
+	OrderStatusWaitingPayment: {
+		UZ: "💳 To‘lov kutilmoqda",
+		RU: "💳 Ожидается оплата",
+		EN: "💳 Waiting for payment",
+	},
+	OrderStatusWaitingOperator: {
+		UZ: "☎️ Operator tasdiqlashi kutilmoqda",
+		RU: "☎️ Ожидает подтверждения",
+		EN: "☎️ Waiting for confirmation",
+	},
+	OrderStatusCooking: {
+		UZ: "👨‍🍳 Tayyorlanyapti",
+		RU: "👨‍🍳 Готовится",
+		EN: "👨‍🍳 Preparing",
+	},
+	OrderStatusReadyForPickup: {
+		UZ: "📦 Olib ketishga tayyor",
+		RU: "📦 Готово к самовывозу",
+		EN: "📦 Ready for pickup",
+	},
+	OrderStatusOnTheWay: {
+		UZ: "🛵 Yo‘lda",
+		RU: "🛵 В пути",
+		EN: "🛵 On the way",
+	},
+	OrderStatusDelivered: {
+		UZ: "✅ Yetkazildi",
+		RU: "✅ Доставлено",
+		EN: "✅ Delivered",
+	},
+	OrderStatusCompleted: {
+		UZ: "🎉 Yakunlandi",
+		RU: "🎉 Завершено",
+		EN: "🎉 Completed",
+	},
+	OrderStatusCancelled: {
+		UZ: "❌ Bekor qilindi",
+		RU: "❌ Отменено",
+		EN: "❌ Cancelled",
+	},
+	OrderStatusRejected: {
+		UZ: "❌ Qabul qilinmadi",
+		RU: "❌ Не принято",
+		EN: "❌ Rejected",
 	},
 }
 

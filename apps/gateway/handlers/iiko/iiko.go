@@ -1,6 +1,7 @@
 package iiko
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -93,24 +94,21 @@ func (h *handler) DeliveryOrderUpdate(c *gin.Context) {
 	)
 
 	for _, evt := range events {
-		h.logger.Info(ctx, "IIKO webhook event",
-			zap.String("eventType", evt.EventType),
-			zap.String("externalNumber", evt.EventInfo.ExternalNumber),
-			zap.String("creationStatus", evt.EventInfo.CreationStatus),
-			zap.String("correlationId", evt.CorrelationId),
-		)
+		evt := evt // loop capture fix
 
 		switch strings.ToUpper(strings.TrimSpace(evt.EventType)) {
 		case "DELIVERYORDERUPDATE":
-			if err := h.orderSvc.HandleIikoDeliveryOrderUpdate(ctx, evt); err != nil {
-				h.logger.Error(ctx, "HandleIikoDeliveryOrderUpdate failed", zap.Error(err))
-			}
+			go func() {
+				if err := h.orderSvc.HandleIikoDeliveryOrderUpdate(context.Background(), evt); err != nil {
+					h.logger.Error(ctx, "HandleIikoDeliveryOrderUpdate failed", zap.Error(err))
+				}
+			}()
 		case "DELIVERYORDERERROR":
-			if err := h.orderSvc.HandleIikoDeliveryOrderError(ctx, evt); err != nil {
-				h.logger.Error(ctx, "HandleIikoDeliveryOrderError failed", zap.Error(err))
-			}
-		default:
-			h.logger.Info(ctx, "IIKO webhook ignored eventType", zap.String("eventType", evt.EventType))
+			go func() {
+				if err := h.orderSvc.HandleIikoDeliveryOrderError(context.Background(), evt); err != nil {
+					h.logger.Error(ctx, "HandleIikoDeliveryOrderError failed", zap.Error(err))
+				}
+			}()
 		}
 	}
 
