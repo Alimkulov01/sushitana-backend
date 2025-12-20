@@ -305,9 +305,7 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		}
 	}
 
-	// 3) build request:
-	// DELIVERY bo'lsa deliveryPoint majburiy (builder error qaytaradi)
-	// PICKUP bo'lsa deliveryPoint kerak emas
+	// 3) build request
 	iikoReq, err := buildCreateOrderForIiko(ord)
 	if err != nil {
 		s.logger.Error(ctx, "buildCreateOrderForIiko failed",
@@ -318,18 +316,23 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		return err
 	}
 
-	// 4) DELIVERY/PICKUP bo'yicha to'g'ri endpointga yuboramiz
-	var resp structs.IikoCreateDeliveryResponse
-
-	switch deliveryType {
-	case "DELIVERY":
-		resp, err = s.iikoSvc.CreateOrder(ctx, iikoReq) // deliveries/create
-	case "PICKUP":
-		resp, err = s.iikoSvc.CreateOrder(ctx, iikoReq) // ✅ orders/create (variant B)
-	default:
-		return fmt.Errorf("unknown DeliveryType=%s", ord.Order.DeliveryType)
+	// ✅ FIX: sizning iikoSvc validatsiya "deliveryPoint required" deb tursa,
+	// PICKUP uchun ham minimal deliveryPoint qo'yib yuboramiz.
+	// (pickup uchun restoranning koordinatasini env'dan oling)
+	if deliveryType == "PICKUP" && iikoReq.Order.DeliveryPoint == nil {
+		if err := fillPickupDeliveryPointFromEnv(&iikoReq.Order); err != nil {
+			// Agar env berilmagan bo'lsa, tushunarli xato qaytaramiz
+			s.logger.Error(ctx, "pickup deliveryPoint required by iikoSvc but missing",
+				zap.String("order_id", orderID),
+				zap.Error(err),
+			)
+			return err
+		}
 	}
 
+	// 4) DELIVERY/PICKUP -> hozir ikkalasi ham deliveries/create orqali ketadi
+	var resp structs.IikoCreateDeliveryResponse
+	resp, err = s.iikoSvc.CreateOrder(ctx, iikoReq)
 	if err != nil {
 		s.logger.Error(ctx, "iiko create failed",
 			zap.String("order_id", orderID),
@@ -340,7 +343,6 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 	}
 
 	// 5) iiko meta update
-	// (OrderInfo maydonlari sizda aynan shunday bo'lsa)
 	_ = s.orderRepo.UpdateIikoMeta(ctx, orderID, resp.OrderInfo.ID, resp.OrderInfo.PosID, resp.CorrelationId)
 
 	s.logger.Info(ctx, "iiko create success",
@@ -352,6 +354,41 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		zap.String("correlation_id", resp.CorrelationId),
 	)
 
+	return nil
+}
+
+// IIKO_PICKUP_LAT / IIKO_PICKUP_LNG orqali pickup uchun minimal deliveryPoint qo'yadi.
+// Bu workaround: sizning iikoSvc validatsiya deliveryPoint'ni majburiy qilib qo'ygan bo'lsa,
+// PICKUP ham shu check'dan o'tadi.
+func fillPickupDeliveryPointFromEnv(o *structs.IikoOrder) error {
+	latStr := strings.TrimSpace(os.Getenv("IIKO_PICKUP_LAT"))
+	lngStr := strings.TrimSpace(os.Getenv("IIKO_PICKUP_LNG"))
+	if latStr == "" || lngStr == "" {
+		return fmt.Errorf("PICKUP requires deliveryPoint by current iikoSvc validation; set env IIKO_PICKUP_LAT and IIKO_PICKUP_LNG")
+	}
+
+	lat, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		return fmt.Errorf("bad IIKO_PICKUP_LAT=%q: %w", latStr, err)
+	}
+	lng, err := strconv.ParseFloat(lngStr, 64)
+	if err != nil {
+		return fmt.Errorf("bad IIKO_PICKUP_LNG=%q: %w", lngStr, err)
+	}
+	if lat == 0 || lng == 0 {
+		return fmt.Errorf("pickup coords cannot be 0; got lat=%v lng=%v", lat, lng)
+	}
+
+	o.DeliveryPoint = &structs.IikoDeliveryPoint{
+		Coordinates: &structs.IikoCoordinates{
+			Latitude:  lat,
+			Longitude: lng,
+		},
+		Address: &structs.IikoAddress{
+			House:   "1",
+			Comment: "PICKUP",
+		},
+	}
 	return nil
 }
 
@@ -378,7 +415,6 @@ func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateSta
 			if deliveryType == "DELIVERY" && ord.Order.Address == nil {
 				return fmt.Errorf("paid but address missing")
 			}
-
 			go func(orderID string) {
 				_ = s.sendToIikoIfAllowed(context.Background(), orderID)
 			}(req.OrderId)
@@ -433,14 +469,19 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 	st := strings.ToUpper(strings.TrimSpace(req.Status))
 	req.Status = st
 
+	// ✅ FIX: avval DB status update qilamiz (COOKING ham)
+	if err := s.orderRepo.UpdateStatus(ctx, req); err != nil {
+		return err
+	}
+
+	// COOKING bo'lsa iiko'ga yuborishni ham urinib ko'ramiz
 	if st == "COOKING" {
 		if err := s.sendToIikoIfAllowed(ctx, req.OrderId); err != nil {
 			return err
 		}
-		return nil
 	}
 
-	return s.orderRepo.UpdateStatus(ctx, req)
+	return nil
 }
 
 func (s *service) BuildClickPayURL(serviceID int64, merchantID string, amountInt int64, orderID, returnURL string) string {
@@ -498,11 +539,12 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		paymentKind = "Cash"
 		paymentTypeID = paymentCashID
 	case "CLICK":
-		paymentKind = "Card"
+		// Tavsiya: ko'p iiko accountlarda "External" + processedExternally ishlaydi
+		paymentKind = "External"
 		processedExternally = true
 		paymentTypeID = paymentClickID
 	case "PAYME":
-		paymentKind = "Card"
+		paymentKind = "External"
 		processedExternally = true
 		paymentTypeID = paymentPaymeID
 	default:
@@ -550,7 +592,6 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		phone = strings.TrimSpace(ord.Order.Phone)
 	}
 	if phone == "" {
-		// iiko ko'pincha phone talab qiladi, bo'lmasa ham ketib qolmasin deb
 		phone = "+998000000000"
 	}
 
@@ -582,8 +623,6 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		lat := a.Lat
 		lng := a.Lng
 
-		// ✅ eng muhim fix: koordinata bo'lmasa iiko'ga yubormaymiz
-		// (sizda lat/lng string bo'lib kelib 0 bo'lib qolayotgan bo'lishi mumkin)
 		if lat == 0 || lng == 0 {
 			return structs.IikoCreateDeliveryRequest{}, fmt.Errorf("iiko delivery requires coordinates (lat/lng), got lat=%v lng=%v", lat, lng)
 		}
@@ -683,7 +722,6 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
 	newStatus := mapIikoStatusToOurStatus(iikoStatus)
-
 	if newStatus == "" {
 		return nil
 	}
@@ -697,9 +735,7 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		return err
 	}
 
-	// ✅ notify (idempotent)
 	s.notifyOrderStatusIfNeeded(ctx, ord.ID, newStatus)
-
 	return nil
 }
 
@@ -736,9 +772,8 @@ func (s *service) notifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 	}
 
 	lang := utils.UZ // default
-
 	if s.clientRepo != nil {
-		l, e := s.clientRepo.GetLanguageByTgID(ctx, target.TgID) // l string
+		l, e := s.clientRepo.GetLanguageByTgID(ctx, target.TgID)
 		if e == nil {
 			if ll, ok := toLang(l); ok {
 				lang = ll
@@ -784,8 +819,6 @@ func (s *service) HandleIikoDeliveryOrderError(ctx context.Context, evt structs.
 
 	_ = s.orderRepo.UpdateIikoMeta(ctx, ord.ID, evt.EventInfo.ID, evt.EventInfo.PosID, evt.CorrelationId)
 	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: "REJECTED"})
-
-	// xohlasangiz REJECTED ni ham notify qilish mumkin:
 	s.notifyOrderStatusIfNeeded(ctx, ord.ID, "REJECTED")
 
 	if evt.EventInfo.ErrorInfo != nil {
