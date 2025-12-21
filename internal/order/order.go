@@ -357,41 +357,6 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 	return nil
 }
 
-// IIKO_PICKUP_LAT / IIKO_PICKUP_LNG orqali pickup uchun minimal deliveryPoint qo'yadi.
-// Bu workaround: sizning iikoSvc validatsiya deliveryPoint'ni majburiy qilib qo'ygan bo'lsa,
-// PICKUP ham shu check'dan o'tadi.
-func fillPickupDeliveryPointFromEnv(o *structs.IikoOrder) error {
-	latStr := strings.TrimSpace(os.Getenv("IIKO_PICKUP_LAT"))
-	lngStr := strings.TrimSpace(os.Getenv("IIKO_PICKUP_LNG"))
-	if latStr == "" || lngStr == "" {
-		return fmt.Errorf("PICKUP requires deliveryPoint by current iikoSvc validation; set env IIKO_PICKUP_LAT and IIKO_PICKUP_LNG")
-	}
-
-	lat, err := strconv.ParseFloat(latStr, 64)
-	if err != nil {
-		return fmt.Errorf("bad IIKO_PICKUP_LAT=%q: %w", latStr, err)
-	}
-	lng, err := strconv.ParseFloat(lngStr, 64)
-	if err != nil {
-		return fmt.Errorf("bad IIKO_PICKUP_LNG=%q: %w", lngStr, err)
-	}
-	if lat == 0 || lng == 0 {
-		return fmt.Errorf("pickup coords cannot be 0; got lat=%v lng=%v", lat, lng)
-	}
-
-	o.DeliveryPoint = &structs.IikoDeliveryPoint{
-		Coordinates: &structs.IikoCoordinates{
-			Latitude:  lat,
-			Longitude: lng,
-		},
-		Address: &structs.IikoAddress{
-			House:   "1",
-			Comment: "PICKUP",
-		},
-	}
-	return nil
-}
-
 func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error {
 	pStatus := strings.ToUpper(strings.TrimSpace(req.Status))
 	if err := s.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
@@ -473,7 +438,7 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 	if err := s.orderRepo.UpdateStatus(ctx, req); err != nil {
 		return err
 	}
-
+	s.notifyOrderStatusIfNeeded(ctx, req.OrderId, st)
 	// COOKING bo'lsa iiko'ga yuborishni ham urinib ko'ramiz
 	if st == "COOKING" {
 		if err := s.sendToIikoIfAllowed(ctx, req.OrderId); err != nil {
