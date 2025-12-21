@@ -13,6 +13,7 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 
+	"sushitana/apps/bot/commands/clients"
 	"sushitana/internal/cart"
 	"sushitana/internal/delivery"
 	"sushitana/internal/order"
@@ -29,29 +30,32 @@ import (
 var Module = fx.Provide(New)
 
 type Commands struct {
-	logger   logger.Logger
-	cartSvc  cart.Service
-	orderSvc order.Service
-	clickSvc click.Service
-	paymeSvc payme.Service
+	logger     logger.Logger
+	cartSvc    cart.Service
+	orderSvc   order.Service
+	clickSvc   click.Service
+	paymeSvc   payme.Service
+	clientsCmd clients.Commands
 }
 
 type Params struct {
 	fx.In
-	Logger   logger.Logger
-	CartSvc  cart.Service
-	OrderSvc order.Service
-	ClickSvc click.Service
-	PaymeSvc payme.Service
+	Logger     logger.Logger
+	CartSvc    cart.Service
+	OrderSvc   order.Service
+	ClickSvc   click.Service
+	PaymeSvc   payme.Service
+	ClientsCmd clients.Commands
 }
 
 func New(p Params) Commands {
 	return Commands{
-		logger:   p.Logger,
-		cartSvc:  p.CartSvc,
-		orderSvc: p.OrderSvc,
-		clickSvc: p.ClickSvc,
-		paymeSvc: p.PaymeSvc,
+		logger:     p.Logger,
+		cartSvc:    p.CartSvc,
+		orderSvc:   p.OrderSvc,
+		clickSvc:   p.ClickSvc,
+		paymeSvc:   p.PaymeSvc,
+		clientsCmd: p.ClientsCmd,
 	}
 }
 
@@ -418,11 +422,12 @@ func (c *Commands) CheckoutPreviewHandler(ctx *tgrouter.Ctx) {
 
 	// Cancel -> main menu (order flow cancel)
 	if txt == texts.Get(lang, texts.CancelBtn) {
-		rm := tgbotapi.NewMessage(chatID, "\u200b")
-		rm.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
-		_, _ = ctx.Bot().Send(rm)
+		m := tgbotapi.NewMessage(chatID, "❌ Bekor qilindi")
+		m.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
+		_, _ = ctx.Bot().Send(m)
 
-		_ = ctx.UpdateState("show_main_menu", nil)
+		_ = ctx.UpdateState("show_main_menu", map[string]string{"last_action": "show_main_menu"})
+		c.clientsCmd.ShowMainMenu(ctx)
 		return
 	}
 
