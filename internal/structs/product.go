@@ -113,9 +113,10 @@ type Price struct {
 }
 
 type GetListProductRequest struct {
-	Offset int64  `json:"offset"`
-	Limit  int64  `json:"limit"`
-	Search string `json:"Search"`
+	Offset   int64  `json:"offset"`
+	Limit    int64  `json:"limit"`
+	Search   string `json:"Search"`
+	IsActive *bool  `json:"is_active"`
 }
 
 type GetListProductResponse struct {

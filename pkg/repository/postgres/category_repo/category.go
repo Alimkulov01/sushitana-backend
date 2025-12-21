@@ -119,22 +119,63 @@ func (r *repo) Create(ctx context.Context, req []structs.CreateCategory) error {
 }
 func (r *repo) GetByID(ctx context.Context, id string) (structs.Category, error) {
 	var (
-		resp  structs.Category
-		query = `
+		resp         structs.Category
+		productsJSON []byte
+		query        = `
 			SELECT
-				id, 
-				name, 
-				post_id, 
-				COALESCE(is_active, false) AS is_active, 
-				"index", 
-				created_at, 
-				updated_at, 
-				parent_id, 
-				COALESCE(is_included_in_menu, false) AS is_included_in_menu, 
-				COALESCE(is_group_modifier, false) AS is_group_modifier, 
-				COALESCE(is_deleted, false) AS is_deleted 
-			FROM category
-			WHERE id = $1
+			c.id,
+			c.name,
+			c.post_id,
+			COALESCE(c.is_active, false) AS is_active,
+			c."index",
+			c.created_at,
+			c.updated_at,
+			c.parent_id,
+			COALESCE(c.is_included_in_menu, false) AS is_included_in_menu,
+			COALESCE(c.is_group_modifier, false) AS is_group_modifier,
+			COALESCE(c.is_deleted, false) AS is_deleted,
+			COALESCE((
+				SELECT jsonb_agg(
+				jsonb_build_object(
+					'id', p.id,
+					'group_id', p.group_id,
+					'name', p.name,
+					'product_category_id', COALESCE(p.product_category_id, ''),
+					'type', p.type,
+					'order_item_type', p.order_item_type,
+					'measure_unit', p.measure_unit,
+					'size_prices', p.size_prices,
+					'do_not_print_in_cheque', COALESCE(p.do_not_print_in_cheque, false),
+					'parent_group', COALESCE(p.parent_group, ''),
+					'order', p."order",
+					'payment_subject', COALESCE(p.payment_subject, ''),
+					'code', p.code,
+					'is_deleted', COALESCE(p.is_deleted, false),
+					'can_set_open_price', COALESCE(p.can_set_open_price, false),
+					'splittable', p.splittable,
+					'index', p."index",
+					'is_new', COALESCE(p.is_new, false),
+					'img_url', p.img_url,
+					'is_active', COALESCE(p.is_active, false),
+					'box_id', COALESCE(p.box_id, ''),
+					'description', p.description,
+					'created_at', p.created_at,
+					'updated_at', p.updated_at,
+					'weight', p.weight
+				)
+				ORDER BY p."order"
+				)
+				FROM product p
+				WHERE p.parent_group = c.id::text
+				AND EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(p.size_prices) AS sp
+				WHERE (sp->'price'->>'currentPrice')::bigint > 0
+				)
+			), '[]'::jsonb) AS products
+
+			FROM category c
+			WHERE c.id = $1;
 		`
 	)
 	err := r.db.QueryRow(ctx, query, id).Scan(
@@ -149,6 +190,7 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Category, error)
 		&resp.IsIncludedInMenu,
 		&resp.IsGroupModifier,
 		&resp.IsDeleted,
+		&productsJSON,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -158,6 +200,14 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Category, error)
 		r.logger.Error(ctx, "error querying row", zap.Error(err))
 		return structs.Category{}, fmt.Errorf("error getting category item by ID: %w", err)
 	}
+	if len(productsJSON) > 0 {
+		if err := json.Unmarshal(productsJSON, &resp.Products); err != nil {
+			return structs.Category{}, fmt.Errorf("unmarshal products: %w", err)
+		}
+	} else {
+		resp.Products = nil // yoki []structs.Product{}
+	}
+
 	return resp, err
 }
 func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) (resp structs.GetListCategoryResponse, err error) {

@@ -433,6 +433,11 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListProductRequest) (
 		args = append(args, "%"+req.Search+"%")
 		argID++
 	}
+	if req.IsActive != nil {
+		where += fmt.Sprintf(` AND COALESCE(is_active, false) = $%d `, argID)
+		args = append(args, *req.IsActive)
+		argID++
+	}
 
 	query := fmt.Sprintf(`
 		SELECT

@@ -12,6 +12,7 @@ type Category struct {
 	Index            int64     `json:"index"`
 	IsActive         bool      `json:"is_active"`
 	IsDeleted        bool      `json:"isDeleted"`
+	Products         []Product `json:"product"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }

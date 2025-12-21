@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 
 	"sushitana/internal/iiko"
 	product "sushitana/internal/product"
@@ -133,6 +134,17 @@ func (h *handler) GetListProduct(c *gin.Context) {
 	filter.Limit = int64(utils.StrToInt(limit))
 	filter.Offset = int64(utils.StrToInt(offset))
 	filter.Search = search
+	isActiveStr := c.Query("is_active")
+	if isActiveStr != "" {
+		v, err := strconv.ParseBool(isActiveStr) // "true"/"false"/"1"/"0"
+		if err != nil {
+			c.JSON(400, gin.H{"error": "is_active must be true/false"})
+			return
+		}
+		filter.IsActive = &v
+	} else {
+		filter.IsActive = nil // filter ishlamaydi, hammasi chiqadi
+	}
 
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 

@@ -5,10 +5,12 @@ import (
 	"strconv"
 
 	rtws "sushitana/internal/ws" // ✅ internal/ws Hub shu yerda
+	"sushitana/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 var (
@@ -22,17 +24,20 @@ type (
 
 	Params struct {
 		fx.In
-		Hub *rtws.Hub // ✅ mana shu joy sabab “undefined: Hub” chiqyapti
+		Hub    *rtws.Hub // ✅ mana shu joy sabab “undefined: Hub” chiqyapti
+		Logger logger.Logger
 	}
 
 	handler struct {
-		hub *rtws.Hub
+		hub    *rtws.Hub
+		logger logger.Logger
 	}
 )
 
 func New(p Params) Handler {
 	return &handler{
-		hub: p.Hub,
+		hub:    p.Hub,
+		logger: p.Logger,
 	}
 }
 
@@ -58,6 +63,7 @@ func (h *handler) OrdersWS(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
+		h.logger.Error(c.Request.Context(), "connection websocket err", zap.Error(err)) // yoki log
 		return
 	}
 
