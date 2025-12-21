@@ -17,6 +17,7 @@ import (
 	shopapi "sushitana/internal/payment/shop-api"
 	"sushitana/internal/structs"
 	"sushitana/internal/texts"
+	rtws "sushitana/internal/ws"
 	"sushitana/pkg/logger"
 	"sushitana/pkg/utils"
 
@@ -42,6 +43,7 @@ type (
 		ClickRepo  clickrepo.Repo
 		ClientRepo clientrepo.Repo
 		Bot        *tgbotapi.BotAPI `optional:"true"`
+		Hub        *rtws.Hub        `optional:"true"`
 
 		ClickSvc click.Service
 		ShopSvc  shopapi.Service
@@ -52,7 +54,7 @@ type (
 	}
 
 	Service interface {
-		Create(ctx context.Context, req structs.CreateOrder) (string, error)
+		Create(ctx context.Context, req structs.CreateOrder) (string, string, error)
 		ConfirmByOperator(ctx context.Context, orderID string) error
 		GetByTgId(ctx context.Context, tgId int64) (structs.GetListOrderByTgIDResponse, error)
 		GetByID(ctx context.Context, id string) (structs.GetListPrimaryKeyResponse, error)
@@ -72,6 +74,7 @@ type (
 		clickRepo  clickrepo.Repo
 		clientRepo clientrepo.Repo
 		bot        *tgbotapi.BotAPI `optional:"true"`
+		Hub        *rtws.Hub        `optional:"true"`
 
 		logger logger.Logger
 
@@ -138,14 +141,14 @@ func NormalizePaymentMethod(v string) (string, error) {
 	return "", structs.ErrBadRequest
 }
 
-func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, error) {
+func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, string, error) {
 	dt, err := NormalizeDeliveryType(req.DeliveryType)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	pm, err := NormalizePaymentMethod(req.PaymentMethod)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.DeliveryType = dt
 	req.PaymentMethod = pm
@@ -157,7 +160,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		}
 	} else { // DELIVERY
 		if req.Address == nil {
-			return "", fmt.Errorf("address is required for delivery")
+			return "", "", fmt.Errorf("address is required for delivery")
 		}
 	}
 
@@ -165,22 +168,22 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	id, err := s.orderRepo.Create(ctx, req)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
-			return "", err
+			return "", "", err
 		}
 		s.logger.Error(ctx, "->orderRepo.Create", zap.Error(err))
-		return "", err
+		return "", "", err
 	}
 
 	ord, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil {
 		s.logger.Error(ctx, "->orderRepo.GetByID after Create", zap.Error(err))
-		return "", err
+		return "", "", err
 	}
 
 	// 2) For CASH: just ensure status WAITING_OPERATOR and return orderID
 	if req.PaymentMethod == "CASH" {
 		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_OPERATOR"})
-		return ord.Order.ID, nil
+		return "", ord.Order.ID, nil
 	}
 
 	// 3) Online payments: set WAITING_PAYMENT and create payment_url once, save to DB.
@@ -188,7 +191,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 	// idempotent: if already has link, just return orderID
 	if strings.TrimSpace(ord.Order.PaymentUrl) != "" {
-		return ord.Order.ID, nil
+		return "", ord.Order.ID, nil
 	}
 
 	switch req.PaymentMethod {
@@ -196,7 +199,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		serviceId := strings.TrimSpace(os.Getenv("CLICK_SERVICE_ID"))
 		merchantId := strings.TrimSpace(os.Getenv("CLICK_MERCHANT_ID"))
 		if serviceId == "" || merchantId == "" {
-			return ord.Order.ID, fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
+			return ord.Order.ID, "", fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
 		}
 		merchantTransID := cast.ToString(ord.Order.OrderNumber)
 
@@ -211,7 +214,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			Description:      fmt.Sprintf("Order #%d", ord.Order.OrderNumber),
 		})
 		if err != nil {
-			return ord.Order.ID, fmt.Errorf("click checkout/prepare failed: %w", err)
+			return "", ord.Order.ID, fmt.Errorf("click checkout/prepare failed: %w", err)
 		}
 
 		// invoice create
@@ -225,25 +228,25 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			Status:          "WAITING_PAYMENT",
 		}
 		if _, err := s.clickRepo.Create(ctx, inv); err != nil {
-			return ord.Order.ID, err
+			return ord.Order.ID, "", err
 		}
 
 		sid := cast.ToInt64(serviceId)
 		payURL := s.BuildClickPayURL(sid, merchantId, int64(amountInt), merchantTransID, "")
 		if strings.TrimSpace(payURL) == "" {
-			return ord.Order.ID, fmt.Errorf("click pay url is empty")
+			return ord.Order.ID, payURL, fmt.Errorf("click pay url is empty")
 		}
 		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
 			s.logger.Error(ctx, "->orderRepo.AddLink (CLICK)", zap.Error(err), zap.String("order_id", ord.Order.ID))
-			return ord.Order.ID, err
+			return ord.Order.ID, payURL, err
 		}
 
-		return payURL, nil
+		return payURL, ord.Order.ID, nil
 
 	case "PAYME":
 		merchantID := strings.TrimSpace(os.Getenv("PAYME_KASSA_ID"))
 		if merchantID == "" {
-			return ord.Order.ID, fmt.Errorf("PAYME_KASSA_ID env not found")
+			return "", ord.Order.ID, fmt.Errorf("PAYME_KASSA_ID env not found")
 		}
 
 		amountTiyin := ord.Order.TotalPrice * 100
@@ -252,18 +255,18 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		payURL, err := s.paymeSvc.BuildPaymeCheckoutURL(merchantID, transactionParam, amountTiyin)
 		if err != nil {
 			s.logger.Error(ctx, "->paymeSvc.BuildPaymeCheckoutURL failed", zap.Error(err), zap.String("order_id", ord.Order.ID))
-			return ord.Order.ID, fmt.Errorf("build payme checkout url failed: %w", err)
+			return "", ord.Order.ID, fmt.Errorf("build payme checkout url failed: %w", err)
 		}
 
 		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
 			s.logger.Error(ctx, "->orderRepo.AddLink (PAYME)", zap.Error(err), zap.String("order_id", ord.Order.ID))
-			return ord.Order.ID, err
+			return "", ord.Order.ID, err
 		}
 
-		return payURL, nil
+		return payURL, ord.Order.ID, nil
 
 	default:
-		return "", fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
+		return "", "", fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
 	}
 }
 
@@ -373,7 +376,7 @@ func (s *service) UpdatePaymentStatus(ctx context.Context, req structs.UpdateSta
 
 	paymentMethod := strings.ToUpper(ord.Order.PaymentMethod)
 	deliveryType := strings.ToUpper(ord.Order.DeliveryType)
-
+	s.notifyOrderStatusIfNeeded(ctx, req.OrderId, "WAITING_PAYMENT")
 	switch pStatus {
 	case "PAID":
 		if paymentMethod == "CLICK" || paymentMethod == "PAYME" {
@@ -734,6 +737,16 @@ func (s *service) notifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 	}
 	if !ok || target.TgID == 0 {
 		return
+	}
+	if s.Hub != nil {
+		s.Hub.BroadcastToUser(target.TgID, structs.Event{
+			Type: structs.EventOrderPatch,
+			Payload: structs.OrderPatchPayload{
+				ID:          orderID,
+				Status:      newStatus,
+				OrderNumber: int64(target.OrderNumber),
+			},
+		})
 	}
 
 	lang := utils.UZ // default

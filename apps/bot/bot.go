@@ -31,6 +31,7 @@ var Module = fx.Options(
 
 	fx.Provide(middleware.New),
 	fx.Invoke(NewBot),
+	fx.Provide(NewTelegramBot),
 )
 
 type Params struct {
@@ -49,7 +50,20 @@ type Params struct {
 	OrderCmd    order.Commands
 }
 
+func NewTelegramBot(cfg config.IConfig) (*tgbotapi.BotAPI, error) {
+	token := cfg.GetString("bot_token_sushitana")
+	if strings.TrimSpace(token) == "" {
+		return nil, fmt.Errorf("telegram bot token bot_token_sushitana is not set")
+	}
+	tb, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize bot: %w", err)
+	}
+	return tb, nil
+}
+
 func NewBot(p Params) error {
+	
 	token := p.Config.GetString("bot_token_sushitana")
 	if token == "" {
 		return fmt.Errorf("telegram bot token client is not set")

@@ -65,7 +65,7 @@ func (h *handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	id, err := h.orderService.Create(c, request)
+	pay_url, _, err := h.orderService.Create(c, request)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
 			response = responses.BadRequest
@@ -77,7 +77,7 @@ func (h *handler) CreateOrder(c *gin.Context) {
 	}
 
 	response = responses.Success
-	response.Payload = id
+	response.Payload = pay_url
 
 }
 

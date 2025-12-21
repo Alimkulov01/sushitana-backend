@@ -552,7 +552,7 @@ func (c *Commands) SelectPaymentMethodHandler(ctx *tgrouter.Ctx) {
 		Products:      toOrderProducts(crt.Cart.Products),
 	}
 
-	orderID, err := c.orderSvc.Create(ctx.Context, req)
+	_, orderID, err := c.orderSvc.Create(ctx.Context, req)
 	if err != nil {
 		c.logger.Error(ctx.Context, "create order failed", zap.Error(err))
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))

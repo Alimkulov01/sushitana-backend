@@ -37,9 +37,29 @@ func On[F FilterType](group *RouterGroup, filter Filter[F], handler Handler, mws
 }
 
 func (group *RouterGroup) State(c *Ctx) {
+	if c == nil || c.update == nil {
+		return
+	}
+
 	c.Context = group.logger.Context(c.Context)
 	group.logger.Info(c.Context, "mwState")
-	state, data, err := group.stateDB.Get(c.Context, int(c.update.FromChat().ID), int(c.update.FromChat().ID))
+
+	chat := c.update.FromChat()
+	if chat == nil {
+		// bu update’da chat yo‘q -> state o‘qimaymiz, lekin c.state nil bo‘lib qolmasin
+		group.logger.Warn(c.Context, "mwState: FromChat is nil, skip state middleware")
+		c.state = &ctxState{
+			stateName: new(string),
+			data:      make(map[string]string),
+		}
+		return
+	}
+
+	state, data, err := group.stateDB.Get(
+		c.Context,
+		int(chat.ID),
+		int(chat.ID),
+	)
 	if err != nil && !errors.Is(err, statemodel.ErrNotFound) {
 		group.logger.Error(c.Context, "failed to get state", zap.Error(err))
 		return

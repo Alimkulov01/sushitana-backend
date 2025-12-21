@@ -154,16 +154,6 @@ func (r *Router) Use(middlewares ...Middleware) {
 	r.RouterGroup.Use(middlewares...)
 }
 
-func (r *Router) serveUpdate(update *tgbotapi.Update) {
-	c := r.pool.Get().(*Ctx)
-	c.update = update
-	c.reset()
-
-	r.handle(c)
-
-	r.pool.Put(c)
-}
-
 func (r *Router) handle(c *Ctx) {
 	for h := range slices.Values(r.routes) {
 		r.logger.Info(c.Context, "route", zap.Any("route", h.rtype))
@@ -177,4 +167,22 @@ func (r *Router) handle(c *Ctx) {
 			return
 		}
 	}
+}
+
+func (r *Router) serveUpdate(update *tgbotapi.Update) {
+	c := r.pool.Get().(*Ctx)
+	c.update = update
+	c.reset()
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logger.Error(c.Context, "tgrouter: panic while handling update",
+				zap.Any("recover", rec),
+				zap.Stack("stack"),
+			)
+		}
+		r.pool.Put(c)
+	}()
+
+	r.handle(c)
 }
