@@ -721,10 +721,19 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 	}
 
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
-	s.logger.Info(ctx, "iiko status debug",
-		zap.Int("orderRawLen", len(evt.EventInfo.Order)),
+	s.logger.Info(ctx, "IIKO webhook extracted status",
+		zap.String("externalNumber", evt.EventInfo.ExternalNumber),
 		zap.String("iikoStatus", iikoStatus),
+		zap.Int("orderRawLen", len(evt.EventInfo.Order)),
+		zap.String("orderRawHead", func() string {
+			raw := string(evt.EventInfo.Order)
+			if len(raw) > 600 {
+				return raw[:600]
+			}
+			return raw
+		}()),
 	)
+
 	if iikoStatus == "" {
 		// vaqtincha: raw orderni ham qisqartirib log qiling
 		raw := string(evt.EventInfo.Order)
