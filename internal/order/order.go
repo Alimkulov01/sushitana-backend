@@ -565,9 +565,9 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 			Amount:    amt,
 		})
 	}
-	// if err := addDeliveryFeeItem(&items, ord.Order.DeliveryType, ord.Order.DeliveryPrice); err != nil {
-	// 	return structs.IikoCreateDeliveryRequest{}, err
-	// }
+	if err := addDeliveryFeeItem(&items, ord.Order.DeliveryType, ord.Order.DeliveryPrice); err != nil {
+		return structs.IikoCreateDeliveryRequest{}, err
+	}
 
 	// 4) payment sum (orderPriceForIIKO)
 	sum := float64(ord.Order.OrderPriceForIIKO)
