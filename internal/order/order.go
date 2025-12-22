@@ -1,6 +1,7 @@
 package order
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -747,6 +748,15 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 		return err
 	}
 
+	final := newStatus == "COMPLETED" || newStatus == "DELIVERED"
+	pm := strings.ToUpper(strings.TrimSpace(ord.PaymentMethod))
+	if final && (pm == "CASH" || pm == "NAQD") {
+		_ = s.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
+			OrderId: ord.ID,
+			Status:  "PAID",
+		})
+	}
+
 	s.notifyOrderStatusIfNeeded(ctx, ord.ID, newStatus)
 	return nil
 }
@@ -857,38 +867,61 @@ func (s *service) HandleIikoDeliveryOrderError(ctx context.Context, evt structs.
 	}
 	return nil
 }
-
 func extractIikoOrderStatus(raw json.RawMessage) string {
-	if len(raw) == 0 {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 		return ""
 	}
+
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return ""
 	}
 
-	// top-level
-	for _, k := range []string{"status", "deliveryStatus", "state", "orderStatus", "currentStatus"} {
-		if v, ok := m[k].(string); ok && strings.TrimSpace(v) != "" {
-			return v
+	// 1) top-level
+	if s := pickStatusValue(m["status"]); s != "" {
+		return s
+	}
+	if s := pickStatusValue(m["deliveryStatus"]); s != "" {
+		return s
+	}
+	if s := pickStatusValue(m["state"]); s != "" {
+		return s
+	}
+
+	// 2) ba’zi payloadlarda nested bo‘lishi mumkin
+	if om, ok := m["order"].(map[string]any); ok {
+		if s := pickStatusValue(om["status"]); s != "" {
+			return s
+		}
+		if s := pickStatusValue(om["deliveryStatus"]); s != "" {
+			return s
+		}
+	}
+	if dm, ok := m["delivery"].(map[string]any); ok {
+		if s := pickStatusValue(dm["status"]); s != "" {
+			return s
+		}
+		if s := pickStatusValue(dm["deliveryStatus"]); s != "" {
+			return s
 		}
 	}
 
-	// nested: order.status / delivery.status
-	if order, ok := m["order"].(map[string]any); ok {
-		if v, ok := order["status"].(string); ok && strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	if delivery, ok := m["delivery"].(map[string]any); ok {
-		if v, ok := delivery["status"].(string); ok && strings.TrimSpace(v) != "" {
-			return v
-		}
-		if v, ok := delivery["deliveryStatus"].(string); ok && strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
+	return ""
+}
 
+func pickStatusValue(v any) string {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x)
+	case map[string]any:
+		// iiko ko‘p ishlatadigan nomlar
+		for _, k := range []string{"name", "value", "code", "key", "status"} {
+			if s, ok := x[k].(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
 	return ""
 }
 
