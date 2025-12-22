@@ -866,15 +866,29 @@ func extractIikoOrderStatus(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return ""
 	}
-	if v, ok := m["status"].(string); ok {
-		return v
+
+	// top-level
+	for _, k := range []string{"status", "deliveryStatus", "state", "orderStatus", "currentStatus"} {
+		if v, ok := m[k].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
 	}
-	if v, ok := m["deliveryStatus"].(string); ok {
-		return v
+
+	// nested: order.status / delivery.status
+	if order, ok := m["order"].(map[string]any); ok {
+		if v, ok := order["status"].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
 	}
-	if v, ok := m["state"].(string); ok {
-		return v
+	if delivery, ok := m["delivery"].(map[string]any); ok {
+		if v, ok := delivery["status"].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+		if v, ok := delivery["deliveryStatus"].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
 	}
+
 	return ""
 }
 
