@@ -70,6 +70,8 @@ const (
 	OrderStatusCompleted       TextKey = "order_status_completed"
 	OrderStatusCancelled       TextKey = "order_status_cancelled"
 	OrderStatusRejected        TextKey = "order_status_rejected"
+
+	DeliveryZonesNotConfigured TextKey = "delivery_zones_not_configured"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -417,6 +419,11 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "❌ Qabul qilinmadi",
 		RU: "❌ Не принято",
 		EN: "❌ Rejected",
+	},
+	DeliveryZonesNotConfigured: {
+		UZ: "Hozircha bu hududga yetkazib berish mavjud emas",
+		RU: "Доставка в этот район пока недоступна",
+		EN: "Delivery is not available in this area yet",
 	},
 }
 

@@ -3,6 +3,8 @@ package client
 import (
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	client "sushitana/internal/client"
 	"sushitana/internal/responses"
@@ -107,16 +109,39 @@ func (h *handler) GetListClient(c *gin.Context) {
 		filter   structs.GetListClientRequest
 		ctx      = c.Request.Context()
 
-		phoneNumber = c.Query("phone_number")
-		name        = c.Query("name")
-		offset      = c.Query("offset")
-		limit       = c.Query("limit")
+		phoneNumber      = c.Query("phone_number")
+		name             = c.Query("name")
+		offset           = c.Query("offset")
+		limit            = c.Query("limit")
+		createdAtFromStr = c.Query("created_at_from")
+		createdAtToStr   = c.Query("created_at_to")
 	)
 
 	filter.PhoneNumber = phoneNumber
 	filter.Name = name
 	filter.Limit = int64(utils.StrToInt(limit))
 	filter.Offset = int64(utils.StrToInt(offset))
+	if strings.TrimSpace(createdAtFromStr) != "" {
+		t, err := time.Parse(time.RFC3339Nano, createdAtFromStr)
+		if err != nil {
+			response = responses.BadRequest
+			response.Message = "invalid created_at_from (RFC3339 expected)"
+			defer reply.Json(c.Writer, http.StatusBadRequest, &response)
+			return
+		}
+		filter.CreatedAtFrom = &t
+	}
+
+	if strings.TrimSpace(createdAtToStr) != "" {
+		t, err := time.Parse(time.RFC3339Nano, createdAtToStr)
+		if err != nil {
+			response = responses.BadRequest
+			response.Message = "invalid created_at_to (RFC3339 expected)"
+			defer reply.Json(c.Writer, http.StatusBadRequest, &response)
+			return
+		}
+		filter.CreatedAtTo = &t
+	}
 
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 

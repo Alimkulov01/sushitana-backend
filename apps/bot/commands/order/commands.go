@@ -15,7 +15,6 @@ import (
 
 	"sushitana/apps/bot/commands/clients"
 	"sushitana/internal/cart"
-	"sushitana/internal/delivery"
 	"sushitana/internal/order"
 	"sushitana/internal/payment/click"
 	"sushitana/internal/payment/payme"
@@ -36,6 +35,7 @@ type Commands struct {
 	clickSvc   click.Service
 	paymeSvc   payme.Service
 	clientsCmd clients.Commands
+	zones      *utils.ZoneChecker
 }
 
 type Params struct {
@@ -46,6 +46,7 @@ type Params struct {
 	ClickSvc   click.Service
 	PaymeSvc   payme.Service
 	ClientsCmd clients.Commands
+	Zones      *utils.ZoneChecker
 }
 
 func New(p Params) Commands {
@@ -56,6 +57,7 @@ func New(p Params) Commands {
 		clickSvc:   p.ClickSvc,
 		paymeSvc:   p.PaymeSvc,
 		clientsCmd: p.ClientsCmd,
+		zones:      p.Zones,
 	}
 }
 
@@ -187,48 +189,53 @@ func (c *Commands) AskLocationOrAddress(ctx *tgrouter.Ctx) {
 	_, _ = ctx.Bot().Send(msg)
 }
 
-// 3) Delivery bo‘lsa: address + location shu handler’da
 func (c *Commands) WaitAddressHandler(ctx *tgrouter.Ctx) {
-	if ctx.Update().Message == nil {
+	upd := ctx.Update()
+	if upd == nil || upd.Message == nil {
 		return
 	}
 
-	chatID := ctx.Update().FromChat().ID
+	msg := upd.Message
+	chatID := msg.Chat.ID
+
 	account, _ := ctx.Context.Value(ctxman.AccountKey{}).(*structs.Client)
 	if account == nil {
 		return
 	}
 	lang := account.Language
 
-	txt := strings.TrimSpace(ctx.Update().Message.Text)
+	txt := strings.TrimSpace(msg.Text)
 
 	// back -> deliveryType tanlash
 	if txt == texts.Get(lang, texts.BackButton) {
 		data := keepData(ctx)
-		_ = ctx.UpdateState("select_delivery_type", data)
+		if err := ctx.UpdateState("select_delivery_type", data); err != nil {
+			c.logger.Error(ctx.Context, "UpdateState select_delivery_type failed", zap.Error(err))
+		}
 		c.Confirm(ctx)
 		return
 	}
 
-	_, st, _ := ctx.GetState()
+	_, st, err := ctx.GetState()
+	if err != nil {
+		c.logger.Error(ctx.Context, "GetState failed", zap.Error(err))
+	}
 	if st == nil {
 		st = map[string]string{}
 	}
 
-	// 3.1) Location keldi -> delivery price hisoblaymiz -> preview
-	if ctx.Update().Message.Location != nil {
-		lat := ctx.Update().Message.Location.Latitude
-		lng := ctx.Update().Message.Location.Longitude
+	if msg.Location != nil {
+		lat := msg.Location.Latitude
+		lng := msg.Location.Longitude
 
 		addressText := strings.TrimSpace(st["addressText"])
 		if addressText == "" {
 			addressText = "geo"
 		}
 
-		info := delivery.GetDeliveryInfo(lat, lng, addressText)
+		info := utils.GetDeliveryInfo(c.zones, lat, lng, addressText)
 		if !info.Available {
-			_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, info.Reason))
-			// state o‘zgarmaydi, yana lokatsiya kutamiz
+			_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.DeliveryZonesNotConfigured)))
 			return
 		}
 
@@ -240,37 +247,46 @@ func (c *Commands) WaitAddressHandler(ctx *tgrouter.Ctx) {
 		data["deliveryPrice"] = strconv.FormatInt(info.Price, 10)
 		data["distanceKm"] = strconv.FormatFloat(info.DistanceKm, 'f', 2, 64)
 
-		_ = ctx.UpdateState("checkout_preview", data)
-		c.ShowCheckoutPreview(ctx)
-		return
-	}
-
-	// 3.2) User address text yubordi -> saqlaymiz, lekin lokatsiya so‘raymiz
-	if txt != "" {
-		data := keepData(ctx)
-		data["deliveryType"] = "DELIVERY"
-		data["addressText"] = txt
-
-		// lokatsiya hali yo‘q bo‘lsa, wait_address’da qolamiz
-		if strings.TrimSpace(data["addressLat"]) == "" || strings.TrimSpace(data["addressLng"]) == "" {
-			_ = ctx.UpdateState("wait_address", data)
-			_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.OrderAddressSavedSendLocation)))
-			c.AskLocationOrAddress(ctx)
+		if err := ctx.UpdateState("checkout_preview", data); err != nil {
+			c.logger.Error(ctx.Context, "UpdateState checkout_preview failed", zap.Error(err))
+			_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 			return
 		}
 
-		// agar oldin lokatsiya bor bo‘lsa (kam uchraydi), preview’ga o‘tamiz
-		_ = ctx.UpdateState("checkout_preview", data)
 		c.ShowCheckoutPreview(ctx)
 		return
 	}
+
+	if txt == "" {
+		c.AskLocationOrAddress(ctx)
+		return
+	}
+
+	data := keepData(ctx)
+	data["deliveryType"] = "DELIVERY"
+	data["addressText"] = txt
+
+	if strings.TrimSpace(data["addressLat"]) == "" || strings.TrimSpace(data["addressLng"]) == "" {
+		if err := ctx.UpdateState("wait_address", data); err != nil {
+			c.logger.Error(ctx.Context, "UpdateState wait_address failed", zap.Error(err))
+			_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
+			return
+		}
+
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.OrderAddressSavedSendLocation)))
+		c.AskLocationOrAddress(ctx)
+		return
+	}
+
+	if err := ctx.UpdateState("checkout_preview", data); err != nil {
+		c.logger.Error(ctx.Context, "UpdateState checkout_preview failed", zap.Error(err))
+		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
+		return
+	}
+
+	c.ShowCheckoutPreview(ctx)
 }
 
-// Preview ko‘rsatish (rasmdagi formatga yaqin)
-// - Client: name/phone
-// - DeliveryType: DELIVERY / PICKUP -> "Доставка"/"Самовывоз" (RU) yoki "Yetkazib berish"/"Olib ketish" (UZ)
-// - Cart items: 1. name \n 1 x price = total
-// - Total: products + delivery
 func (c *Commands) ShowCheckoutPreview(ctx *tgrouter.Ctx) {
 	if ctx.Update().Message == nil {
 		// callback bo‘lsa ham ishlashi mumkin; chatID olishni moslang
@@ -862,3 +878,4 @@ func normBtn(s string) string {
 	}
 	return b.String()
 }
+

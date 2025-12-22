@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
-	statemodel "sushitana/pkg/repository/state"
 	"sushitana/pkg/tgrouter/interfaces"
 )
 
@@ -60,12 +60,12 @@ func (group *RouterGroup) State(c *Ctx) {
 		int(chat.ID),
 		int(chat.ID),
 	)
-	if err != nil && !errors.Is(err, statemodel.ErrNotFound) {
+	if err != nil && !errors.Is(err, structs.ErrNotFound) {
 		group.logger.Error(c.Context, "failed to get state", zap.Error(err))
 		return
 	}
 
-	if errors.Is(err, statemodel.ErrNotFound) {
+	if errors.Is(err, structs.ErrNotFound) {
 		group.logger.Info(c.Context, "state not found")
 		c.state = &ctxState{
 			stateName: new(string),

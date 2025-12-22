@@ -25,10 +25,12 @@ type CreateClient struct {
 }
 
 type GetListClientRequest struct {
-	Offset      int64  `json:"offset"`
-	Limit       int64  `json:"limit"`
-	PhoneNumber string `json:"phone_number"`
-	Name        string `json:"name"`
+	Offset        int64      `json:"offset"`
+	Limit         int64      `json:"limit"`
+	PhoneNumber   string     `json:"phone_number"`
+	Name          string     `json:"name"`
+	CreatedAtFrom *time.Time `json:"created_at_from"`
+	CreatedAtTo   *time.Time `json:"created_at_to"`
 }
 
 type GetListClientResponse struct {

@@ -242,6 +242,16 @@ func filterClientQuery(req structs.GetListClientRequest) (string, pgx.NamedArgs)
 		b.WriteString(` AND c.name ILIKE @name `)
 	}
 
+	// ✅ date range filter (created_at_from/to)
+	if req.CreatedAtFrom != nil {
+		queryParams["created_at_from"] = *req.CreatedAtFrom
+		b.WriteString(` AND c.created_at >= @created_at_from `)
+	}
+	if req.CreatedAtTo != nil {
+		queryParams["created_at_to"] = *req.CreatedAtTo
+		b.WriteString(` AND c.created_at <= @created_at_to `)
+	}
+
 	if req.Limit > 0 {
 		queryParams["limit"] = req.Limit
 	}

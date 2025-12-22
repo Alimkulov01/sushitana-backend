@@ -44,6 +44,7 @@ type (
 		ClientRepo clientrepo.Repo
 		Bot        *tgbotapi.BotAPI `optional:"true"`
 		Hub        *rtws.Hub        `optional:"true"`
+		Zones      *utils.ZoneChecker
 
 		ClickSvc click.Service
 		ShopSvc  shopapi.Service
@@ -75,6 +76,7 @@ type (
 		clientRepo clientrepo.Repo
 		bot        *tgbotapi.BotAPI `optional:"true"`
 		Hub        *rtws.Hub        `optional:"true"`
+		zones      *utils.ZoneChecker
 
 		logger logger.Logger
 
@@ -96,6 +98,7 @@ func New(p Params) Service {
 		paymeSvc: p.PaymeSvc,
 		shopSvc:  p.ShopSvc,
 		iikoSvc:  p.IikoSvc,
+		zones:    p.Zones,
 
 		bot: p.Bot,
 	}
@@ -153,15 +156,32 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	req.DeliveryType = dt
 	req.PaymentMethod = pm
 
-	// address validation
-	if req.DeliveryType == "PICKUP" {
+	switch req.DeliveryType {
+	case "PICKUP":
 		if req.Address == nil {
 			req.Address = &structs.Address{Lat: 0, Lng: 0, Name: "", DistanceKm: 0}
 		}
-	} else { // DELIVERY
-		if req.Address == nil {
-			return "", "", fmt.Errorf("address is required for delivery")
+
+	case "DELIVERY":
+		ok, idx, err := s.zones.ContainsAnyWithIndex(req.Address.Lat, req.Address.Lng)
+		if err != nil {
+			return "", "", fmt.Errorf("zone check failed: %w", err)
 		}
+		if !ok {
+			return "", "", structs.ErrOutOfDeliveryZone
+		}
+
+		switch idx {
+		case 0: // olmaliq.json
+			req.DeliveryPrice = 7000 // misol
+		case 1: // ohangaron.json
+			req.DeliveryPrice = 25000 // misol
+		default:
+			return "", "", structs.ErrOutOfDeliveryZone
+		}
+
+	default:
+		return "", "", structs.ErrBadRequest
 	}
 
 	// 1) Create order in DB
@@ -180,18 +200,30 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		return "", "", err
 	}
 
-	// 2) For CASH: just ensure status WAITING_OPERATOR and return orderID
+	// 2) For CASH: set status WAITING_OPERATOR and return orderID
 	if req.PaymentMethod == "CASH" {
-		_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_OPERATOR"})
+		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+			OrderId: ord.Order.ID,
+			Status:  "WAITING_OPERATOR",
+		}); err != nil {
+			return "", "", err
+		}
+		s.notifyOrderStatusIfNeeded(ctx, ord.Order.ID, "WAITING_OPERATOR")
 		return "", ord.Order.ID, nil
 	}
 
 	// 3) Online payments: set WAITING_PAYMENT and create payment_url once, save to DB.
-	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.Order.ID, Status: "WAITING_PAYMENT"})
+	if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+		OrderId: ord.Order.ID,
+		Status:  "WAITING_PAYMENT",
+	}); err != nil {
+		return "", "", err
+	}
+	s.notifyOrderStatusIfNeeded(ctx, ord.Order.ID, "WAITING_PAYMENT")
 
-	// idempotent: if already has link, just return orderID
+	// idempotent: if already has link, just return it
 	if strings.TrimSpace(ord.Order.PaymentUrl) != "" {
-		return "", ord.Order.ID, nil
+		return ord.Order.PaymentUrl, ord.Order.ID, nil
 	}
 
 	switch req.PaymentMethod {
@@ -199,8 +231,9 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		serviceId := strings.TrimSpace(os.Getenv("CLICK_SERVICE_ID"))
 		merchantId := strings.TrimSpace(os.Getenv("CLICK_MERCHANT_ID"))
 		if serviceId == "" || merchantId == "" {
-			return ord.Order.ID, "", fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
+			return "", ord.Order.ID, fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
 		}
+
 		merchantTransID := cast.ToString(ord.Order.OrderNumber)
 
 		amountInt := ord.Order.TotalPrice
@@ -228,19 +261,19 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			Status:          "WAITING_PAYMENT",
 		}
 		if _, err := s.clickRepo.Create(ctx, inv); err != nil {
-			return ord.Order.ID, "", err
+			return "", ord.Order.ID, err
 		}
 
 		sid := cast.ToInt64(serviceId)
 		payURL := s.BuildClickPayURL(sid, merchantId, int64(amountInt), merchantTransID, "")
 		if strings.TrimSpace(payURL) == "" {
-			return ord.Order.ID, payURL, fmt.Errorf("click pay url is empty")
-		}
-		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
-			s.logger.Error(ctx, "->orderRepo.AddLink (CLICK)", zap.Error(err), zap.String("order_id", ord.Order.ID))
-			return ord.Order.ID, payURL, err
+			return "", ord.Order.ID, fmt.Errorf("click pay url is empty")
 		}
 
+		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
+			s.logger.Error(ctx, "->orderRepo.AddLink (CLICK)", zap.Error(err), zap.String("order_id", ord.Order.ID))
+			return "", ord.Order.ID, err
+		}
 		return payURL, ord.Order.ID, nil
 
 	case "PAYME":
@@ -262,11 +295,10 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			s.logger.Error(ctx, "->orderRepo.AddLink (PAYME)", zap.Error(err), zap.String("order_id", ord.Order.ID))
 			return "", ord.Order.ID, err
 		}
-
 		return payURL, ord.Order.ID, nil
 
 	default:
-		return "", "", fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
+		return "", ord.Order.ID, fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
 	}
 }
 
@@ -318,20 +350,6 @@ func (s *service) sendToIikoIfAllowed(ctx context.Context, orderID string) error
 		)
 		return err
 	}
-
-	// // ✅ FIX: sizning iikoSvc validatsiya "deliveryPoint required" deb tursa,
-	// // PICKUP uchun ham minimal deliveryPoint qo'yib yuboramiz.
-	// // (pickup uchun restoranning koordinatasini env'dan oling)
-	// if deliveryType == "PICKUP" && iikoReq.Order.DeliveryPoint == nil {
-	// 	if err := fillPickupDeliveryPointFromEnv(&iikoReq.Order); err != nil {
-	// 		// Agar env berilmagan bo'lsa, tushunarli xato qaytaramiz
-	// 		s.logger.Error(ctx, "pickup deliveryPoint required by iikoSvc but missing",
-	// 			zap.String("order_id", orderID),
-	// 			zap.Error(err),
-	// 		)
-	// 		return err
-	// 	}
-	// }
 
 	// 4) DELIVERY/PICKUP -> hozir ikkalasi ham deliveries/create orqali ketadi
 	var resp structs.IikoCreateDeliveryResponse
@@ -547,6 +565,9 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 			Amount:    amt,
 		})
 	}
+	// if err := addDeliveryFeeItem(&items, ord.Order.DeliveryType, ord.Order.DeliveryPrice); err != nil {
+	// 	return structs.IikoCreateDeliveryRequest{}, err
+	// }
 
 	// 4) payment sum (orderPriceForIIKO)
 	sum := float64(ord.Order.OrderPriceForIIKO)
@@ -748,6 +769,9 @@ func (s *service) notifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 			},
 		})
 	}
+	if newStatus == "WAITING_OPERATOR" {
+		return
+	}
 
 	lang := utils.UZ // default
 	if s.clientRepo != nil {
@@ -890,4 +914,45 @@ func toLang(s string) (utils.Lang, bool) {
 	default:
 		return utils.UZ, false
 	}
+}
+
+func addDeliveryFeeItem(items *[]structs.IikoOrderItem, deliveryType string, deliveryPrice int64) error {
+	dt := strings.ToUpper(strings.TrimSpace(deliveryType))
+	if dt != "DELIVERY" {
+		return nil
+	}
+	if deliveryPrice <= 0 {
+		return fmt.Errorf("deliveryPrice invalid: %d", deliveryPrice)
+	}
+
+	var envKey string
+	switch deliveryPrice {
+	case 7000:
+		envKey = "IIKO_DELIVERY_PRODUCT_ID_7000"
+	case 25000:
+		envKey = "IIKO_DELIVERY_PRODUCT_ID_25000"
+	default:
+		return fmt.Errorf("unsupported deliveryPrice=%d (only 7000 or 25000)", deliveryPrice)
+	}
+
+	productID := strings.TrimSpace(os.Getenv(envKey))
+	if productID == "" {
+		return fmt.Errorf("%s env not set", envKey)
+	}
+
+	// duplicate bo'lib ketmasin
+	for i := range *items {
+		if strings.TrimSpace((*items)[i].ProductId) == productID {
+			(*items)[i].Amount = 1
+			(*items)[i].Type = "Product"
+			return nil
+		}
+	}
+
+	*items = append(*items, structs.IikoOrderItem{
+		Type:      "Product",
+		ProductId: productID,
+		Amount:    1,
+	})
+	return nil
 }

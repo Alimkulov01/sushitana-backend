@@ -57,7 +57,7 @@ func (s *state) Get(ctx context.Context, userId, chatId int) (string, map[string
 		&data)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil, ErrNotFound
+			return "", nil, structs.ErrNotFound
 		}
 		return "", nil, fmt.Errorf("repo: failed get state: %w", pgxErr(err))
 	}
@@ -65,14 +65,22 @@ func (s *state) Get(ctx context.Context, userId, chatId int) (string, map[string
 }
 
 func (s *state) Set(ctx context.Context, userId, chatId int, state string, data map[string]string) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO state (user_id, chat_id, state, data) VALUES ($1, $2, $3, $4) 
-			ON CONFLICT (user_id, chat_id) DO UPDATE SET state = $3, data = $4`, userId, chatId, state, data)
-	return fmt.Errorf("repo: failed update state: %w", pgxErr(err))
+	_, err := s.db.Exec(ctx, `INSERT INTO state (user_id, chat_id, state, data) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, chat_id) DO UPDATE SET state = $3, data = $4`,
+		userId, chatId, state, data)
+
+	if err != nil {
+		return fmt.Errorf("repo: failed update state: %w", err)
+	}
+	return nil
 }
 
 func (s *state) Delete(ctx context.Context, userId, chatId int) error {
 	_, err := s.db.Exec(ctx, "DELETE FROM state WHERE user_id = $1 AND chat_id = $2", userId, chatId)
-	return fmt.Errorf("repo: failed delete state: %w", pgxErr(err))
+	if err != nil {
+		return fmt.Errorf("repo: failed delete state: %w", err)
+	}
+	return nil
 }
 
 func (s *state) GetData(ctx context.Context, userId, chatId int, key string) (string, error) {
@@ -91,9 +99,9 @@ func (s *state) GetData(ctx context.Context, userId, chatId int, key string) (st
 func (s *state) UpdateData(ctx context.Context, userId, chatId int, data map[string]string) error {
 	_, err := s.db.Exec(ctx, `UPDATE state SET data = data || $3 WHERE user_id = $1 AND chat_id = $2`,
 		userId, chatId, data)
-	return fmt.Errorf("repo: failed update data: %w", pgxErr(err))
-}
 
-var (
-	ErrNotFound = fmt.Errorf("state not found")
-)
+	if err != nil {
+		return fmt.Errorf("repo: failed update data: %w", err)
+	}
+	return nil
+}
