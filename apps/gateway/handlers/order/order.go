@@ -29,6 +29,7 @@ type (
 		DeleteOrder(c *gin.Context)
 		UpdateStatusOrder(c *gin.Context)
 		UpdateStatusPayment(c *gin.Context)
+		DeliveryMapFound(c *gin.Context)
 	}
 	Params struct {
 		fx.In
@@ -79,6 +80,47 @@ func (h *handler) CreateOrder(c *gin.Context) {
 	response = responses.Success
 	response.Payload = pay_url
 
+}
+
+func (h *handler) DeliveryMapFound(c *gin.Context) {
+	var (
+		response structs.Response
+		request  structs.MapFoundRequest
+		ctx      = c.Request.Context()
+		status   = http.StatusOK
+	)
+
+	defer reply.Json(c.Writer, status, &response)
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		h.logger.Warn(ctx, "error parse request", zap.Error(err))
+		response = responses.BadRequest
+		status = http.StatusBadRequest
+		return
+	}
+
+	price, available, err := h.orderService.DeliveryMapFound(ctx, request)
+	if err != nil {
+		if errors.Is(err, structs.ErrOutOfDeliveryZone) {
+			response = responses.Success
+			response.Payload = structs.MapFoundResponse{
+				Price:     0,
+				Available: false,
+			}
+			return
+		}
+
+		h.logger.Error(ctx, "err on h.orderService.DeliveryMapFound", zap.Error(err))
+		response = responses.InternalErr
+		status = http.StatusInternalServerError
+		return
+	}
+
+	response = responses.Success
+	response.Payload = structs.MapFoundResponse{
+		Price:     price,
+		Available: available,
+	}
 }
 
 func (h *handler) GetByTgIdOrder(c *gin.Context) {

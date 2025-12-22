@@ -167,19 +167,28 @@ func (r repo) GetList(ctx context.Context, req structs.GetListClientRequest) (re
 
 	query := `
 		SELECT
-			COUNT(*) OVER() AS total_count,
-			c.id,
-			c.tgid,
-			COALESCE(c.phone, '')              AS phone,
-			COALESCE(c.language, 'uz')         AS language,
-			c.created_at,
-			c.updated_at,
-			COALESCE(c.is_active, true)        AS is_active,
-			COALESCE(c.name, '')               AS name,
-			(SELECT COUNT(*) FROM orders o WHERE o.tg_id = c.tgid AND o.order_status = 'COMPLETED') AS completed_orders,
-			(SELECT COUNT(*) FROM orders o WHERE o.tg_id = c.tgid) AS total_orders,
-			(SELECT COUNT(*) FROM orders o WHERE o.tg_id = c.tgid AND o.order_status = 'CANCELLED') AS cancelled_orders
+		COUNT(*) OVER() AS total_count,
+		c.id,
+		c.tgid,
+		COALESCE(c.phone, '')        AS phone,
+		COALESCE(c.language, 'uz')   AS language,
+		c.created_at,
+		c.updated_at,
+		COALESCE(c.is_active, true)  AS is_active,
+		COALESCE(c.name, '')         AS name,
+		COALESCE(o.completed_orders, 0) AS completed_orders,
+		COALESCE(o.total_orders, 0)     AS total_orders,
+		COALESCE(o.cancelled_orders, 0) AS cancelled_orders
 		FROM clients c
+		LEFT JOIN (
+		SELECT
+			tg_id,
+			COUNT(*) AS total_orders,
+			COUNT(*) FILTER (WHERE order_status = 'COMPLETED') AS completed_orders,
+			COUNT(*) FILTER (WHERE order_status = 'CANCELLED') AS cancelled_orders
+		FROM orders
+		GROUP BY tg_id
+		) o ON o.tg_id = c.tgid
 	` + filterSQL
 
 	rows, err := r.db.Query(ctx, query, args)

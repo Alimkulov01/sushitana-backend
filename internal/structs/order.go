@@ -191,6 +191,16 @@ type IikoCoordinates struct {
 	Longitude float64 `json:"longitude"`
 }
 
+type MapFoundRequest struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
+type MapFoundResponse struct {
+	Price     int64 `json:"price"`
+	Available bool  `json:"available"`
+}
+
 // Minimal structured address for iiko deliveries/create.
 // You can expand later if needed.
 type IikoAddress struct {

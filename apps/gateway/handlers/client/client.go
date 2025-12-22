@@ -145,7 +145,7 @@ func (h *handler) GetListClient(c *gin.Context) {
 
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
-	list, err := h.clientService.GetList(c, filter)
+	list, err := h.clientService.GetList(c.Request.Context(), filter)
 	if err != nil {
 		if errors.Is(err, structs.ErrNotFound) {
 			response = responses.NotFound

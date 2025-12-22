@@ -63,6 +63,7 @@ type (
 		Delete(ctx context.Context, order_id string) error
 		UpdateStatus(ctx context.Context, req structs.UpdateStatus) error
 		UpdatePaymentStatus(ctx context.Context, req structs.UpdateStatus) error
+		DeliveryMapFound(ctx context.Context, req structs.MapFoundRequest) (int64, bool, error)
 
 		HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs.IikoWebhookEvent) error
 		HandleIikoDeliveryOrderError(ctx context.Context, evt structs.IikoWebhookEvent) error
@@ -173,9 +174,9 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 		switch idx {
 		case 0: // olmaliq.json
-			req.DeliveryPrice = 7000 // misol
+			req.DeliveryPrice = 7000
 		case 1: // ohangaron.json
-			req.DeliveryPrice = 25000 // misol
+			req.DeliveryPrice = 25000
 		default:
 			return "", "", structs.ErrOutOfDeliveryZone
 		}
@@ -463,6 +464,14 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 	// COOKING bo'lsa iiko'ga yuborishni ham urinib ko'ramiz
 	if st == "COOKING" {
 		if err := s.sendToIikoIfAllowed(ctx, req.OrderId); err != nil {
+			return err
+		}
+	}
+	if strings.Contains(st, "CLOSE") || strings.Contains(st, "COMPLETE") {
+		if err := s.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
+			OrderId: req.OrderId,
+			Status:  "PAID",
+		}); err != nil {
 			return err
 		}
 	}
@@ -955,4 +964,29 @@ func addDeliveryFeeItem(items *[]structs.IikoOrderItem, deliveryType string, del
 		Amount:    1,
 	})
 	return nil
+}
+
+func (s *service) DeliveryMapFound(ctx context.Context, req structs.MapFoundRequest) (int64, bool, error) {
+	ok, idx, err := s.zones.ContainsAnyWithIndex(req.Lat, req.Lng)
+	if err != nil {
+		return 0, false, fmt.Errorf("zone check failed: %w", err)
+	}
+	if !ok {
+		return 0, false, structs.ErrOutOfDeliveryZone
+	}
+	var (
+		price     int64
+		available bool
+	)
+	switch idx {
+	case 0: // olmaliq.json
+		price = 7000
+		available = true
+	case 1: // ohangaron.json
+		price = 25000
+		available = true
+	default:
+		return 0, false, structs.ErrOutOfDeliveryZone
+	}
+	return price, available, nil
 }
