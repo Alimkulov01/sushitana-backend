@@ -391,7 +391,7 @@ func (c *Commands) ShowCheckoutPreview(ctx *tgrouter.Ctx) {
 			utils.FCurrency(float64(lineTotal)),
 		)
 	}
-
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>", deliveryPrice)
 	// delivery line (agar DELIVERY bo'lsa ko'rsatamiz)
 	if deliveryType == "DELIVERY" && deliveryPrice > 0 {
 		if strings.ToLower(string(lang)) == "uz" {
@@ -878,4 +878,3 @@ func normBtn(s string) string {
 	}
 	return b.String()
 }
-

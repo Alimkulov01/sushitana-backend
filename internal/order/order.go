@@ -174,7 +174,7 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 		switch idx {
 		case 0: // olmaliq.json
-			req.DeliveryPrice = 7000
+			req.DeliveryPrice = 0
 		case 1: // ohangaron.json
 			req.DeliveryPrice = 25000
 		default:
@@ -472,6 +472,7 @@ func (s *service) UpdateStatus(ctx context.Context, req structs.UpdateStatus) er
 			OrderId: req.OrderId,
 			Status:  "PAID",
 		}); err != nil {
+			s.logger.Error(ctx, "can't update payment status err", zap.Error(err))
 			return err
 		}
 	}
@@ -931,13 +932,13 @@ func addDeliveryFeeItem(items *[]structs.IikoOrderItem, deliveryType string, del
 		return nil
 	}
 	if deliveryPrice <= 0 {
-		return fmt.Errorf("deliveryPrice invalid: %d", deliveryPrice)
+		return nil
 	}
 
 	var envKey string
 	switch deliveryPrice {
 	case 7000:
-		envKey = "IIKO_DELIVERY_PRODUCT_ID_7000"
+		envKey = ""
 	case 25000:
 		envKey = "IIKO_DELIVERY_PRODUCT_ID_25000"
 	default:
@@ -980,7 +981,7 @@ func (s *service) DeliveryMapFound(ctx context.Context, req structs.MapFoundRequ
 	)
 	switch idx {
 	case 0: // olmaliq.json
-		price = 7000
+		price = 0
 		available = true
 	case 1: // ohangaron.json
 		price = 25000
@@ -990,3 +991,4 @@ func (s *service) DeliveryMapFound(ctx context.Context, req structs.MapFoundRequ
 	}
 	return price, available, nil
 }
+

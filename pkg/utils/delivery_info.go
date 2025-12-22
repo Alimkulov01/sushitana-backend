@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	DeliveryPriceOlmaliq   int64 = 7000 
+	DeliveryPriceOlmaliq   int64 = 0 
 	DeliveryPriceOhangaron int64 = 25000 
 )
 
