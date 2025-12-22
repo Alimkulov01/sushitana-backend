@@ -720,6 +720,19 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 	}
 
 	iikoStatus := extractIikoOrderStatus(evt.EventInfo.Order)
+	s.logger.Info(ctx, "iiko status debug",
+		zap.Int("orderRawLen", len(evt.EventInfo.Order)),
+		zap.String("iikoStatus", iikoStatus),
+	)
+	if iikoStatus == "" {
+		// vaqtincha: raw orderni ham qisqartirib log qiling
+		raw := string(evt.EventInfo.Order)
+		if len(raw) > 500 {
+			raw = raw[:500] + "..."
+		}
+		s.logger.Warn(ctx, "iiko order has no status", zap.String("orderRaw", raw))
+		return nil
+	}
 	newStatus := mapIikoStatusToOurStatus(iikoStatus)
 	if newStatus == "" {
 		return nil
@@ -991,4 +1004,3 @@ func (s *service) DeliveryMapFound(ctx context.Context, req structs.MapFoundRequ
 	}
 	return price, available, nil
 }
-
