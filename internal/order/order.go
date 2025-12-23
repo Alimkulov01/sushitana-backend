@@ -973,13 +973,11 @@ func mapIikoStatusToOurStatus(iikoStatus string) string {
 	switch {
 	case strings.Contains(s, "CANCEL"):
 		return "CANCELLED"
-
 	case strings.Contains(s, "REJECT"):
 		return "REJECTED"
-
-	case strings.Contains(s, "WAIT"):
+	case strings.Contains(s, "WAITING"):
 		return "ON_THE_WAY"
-	case strings.Contains(s, "DELIVER"):
+	case strings.Contains(s, "ONWAY"):
 		return "DELIVERED"
 	case strings.Contains(s, "CLOSE") || strings.Contains(s, "COMPLETE"):
 		return "COMPLETED"
