@@ -521,6 +521,16 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 		args = append(args, strings.TrimSpace(req.CreatedAt))
 		argIndex++
 	}
+	if req.CreatedAtFrom != nil {
+		where += fmt.Sprintf(" AND o.created_at >= $%d", argIndex)
+		args = append(args, *req.CreatedAtFrom)
+		argIndex++
+	}
+	if req.CreatedAtTo != nil {
+		where += fmt.Sprintf(" AND o.created_at <= $%d", argIndex)
+		args = append(args, *req.CreatedAtTo)
+		argIndex++
+	}
 
 	sort := " ORDER BY o.created_at DESC"
 	limit := " LIMIT 10"

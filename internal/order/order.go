@@ -941,20 +941,38 @@ func mapIikoStatusToOurStatus(iikoStatus string) string {
 		return "CANCELLED"
 	case strings.Contains(s, "REJECT"):
 		return "REJECTED"
-	case strings.Contains(s, "DELIVERED"):
-		return "DELIVERED"
-	case strings.Contains(s, "COOK"):
-		return "COOKING"
-	case strings.Contains(s, "READY"):
-		return "READY_FOR_PICKUP"
-	case strings.Contains(s, "WAY") || strings.Contains(s, "COURIER") || strings.Contains(s, "DELIVERY") || strings.Contains(s, "ONWAY"):
+	case strings.Contains(s, "Waiting"):
 		return "ON_THE_WAY"
+	case strings.Contains(s, "OnWay"):
+		return "DELIVERED"
 	case strings.Contains(s, "CLOSE") || strings.Contains(s, "COMPLETE"):
 		return "COMPLETED"
 	default:
 		return ""
 	}
 }
+
+// func mapIikoStatusToOurStatus(iikoStatus string) string {
+// 	s := strings.ToUpper(strings.TrimSpace(iikoStatus))
+// 	switch {
+// 	case strings.Contains(s, "CANCEL"):
+// 		return "CANCELLED"
+// 	case strings.Contains(s, "REJECT"):
+// 		return "REJECTED"
+// 	case strings.Contains(s, "DELIVERED"):
+// 		return "DELIVERED"
+// 	case strings.Contains(s, "COOK"):
+// 		return "COOKING"
+// 	case strings.Contains(s, "READY"):
+// 		return "READY_FOR_PICKUP"
+// 	case strings.Contains(s, "WAY") || strings.Contains(s, "COURIER") || strings.Contains(s, "DELIVERY") || strings.Contains(s, "ONWAY"):
+// 		return "ON_THE_WAY"
+// 	case strings.Contains(s, "CLOSE") || strings.Contains(s, "COMPLETE"):
+// 		return "COMPLETED"
+// 	default:
+// 		return ""
+// 	}
+// }
 
 func statusTextKey(st string) texts.TextKey {
 	switch st {

@@ -131,15 +131,17 @@ type CreateOrder struct {
 }
 
 type GetListOrderRequest struct {
-	Limit         int64  `json:"limit"`
-	Offset        int64  `json:"offset"`
-	Status        string `json:"status"`
-	PaymentStatus string `json:"paymentStatus"`
-	DeliveryType  string `json:"deliveryType"`
-	PaymentMethod string `json:"paymentMethod"`
-	OrderNumber   int64  `json:"order_number"`
-	PhoneNumber   string `json:"phone_number"`
-	CreatedAt     string `json:"createdAt"`
+	Limit         int64      `json:"limit"`
+	Offset        int64      `json:"offset"`
+	Status        string     `json:"status"`
+	PaymentStatus string     `json:"paymentStatus"`
+	DeliveryType  string     `json:"deliveryType"`
+	PaymentMethod string     `json:"paymentMethod"`
+	OrderNumber   int64      `json:"order_number"`
+	PhoneNumber   string     `json:"phone_number"`
+	CreatedAt     string     `json:"createdAt"`
+	CreatedAtFrom *time.Time `json:"created_at_from"`
+	CreatedAtTo   *time.Time `json:"created_at_to"`
 }
 
 type GetListOrderResponse struct {
