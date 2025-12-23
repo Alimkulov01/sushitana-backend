@@ -780,6 +780,7 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 	if newStatus == "" {
 		return nil
 	}
+	fmt.Println(ord.DeliveryType == "PICKUP" && newStatus == "WAITING", ord.DeliveryType, newStatus)
 	if ord.DeliveryType == "PICKUP" && newStatus == "WAITING" {
 		newStatus = "READY_FOR_PICKUP"
 	}
