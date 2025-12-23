@@ -936,14 +936,17 @@ func pickStatusValue(v any) string {
 
 func mapIikoStatusToOurStatus(iikoStatus string) string {
 	s := strings.ToUpper(strings.TrimSpace(iikoStatus))
+
 	switch {
 	case strings.Contains(s, "CANCEL"):
 		return "CANCELLED"
+
 	case strings.Contains(s, "REJECT"):
 		return "REJECTED"
-	case strings.Contains(s, "Waiting"):
+
+	case strings.Contains(s, "WAIT"):
 		return "ON_THE_WAY"
-	case strings.Contains(s, "OnWay"):
+	case strings.Contains(s, "DELIVER"):
 		return "DELIVERED"
 	case strings.Contains(s, "CLOSE") || strings.Contains(s, "COMPLETE"):
 		return "COMPLETED"
