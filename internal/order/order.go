@@ -32,6 +32,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const ohangaronMin = int64(400000)
+
 var (
 	Module = fx.Provide(New)
 )
@@ -165,6 +167,10 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		}
 
 	case "DELIVERY":
+		if req.Address == nil {
+			return "", "", structs.ErrBadRequest
+		}
+
 		ok, idx, err := s.zones.ContainsAnyWithIndex(req.Address.Lat, req.Address.Lng)
 		if err != nil {
 			return "", "", fmt.Errorf("zone check failed: %w", err)
@@ -173,11 +179,38 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			return "", "", structs.ErrOutOfDeliveryZone
 		}
 
+		// 1) delivery price
 		switch idx {
 		case 0: // olmaliq.json
 			req.DeliveryPrice = 0
+
 		case 1: // ohangaron.json
 			req.DeliveryPrice = 25000
+
+			// 2) MIN ORDER CHECK (faqat mahsulotlar summasi bo‘yicha)
+			productsTotal := req.TotalPrice
+
+			// agar TotalPrice bo‘sh/0 kelayotgan bo‘lsa, itemlardan hisoblab oling
+			if productsTotal <= 0 {
+				for _, it := range req.Products {
+					// it.Price / it.ProductPrice sizning struct field nomingizga mos bo‘lsin:
+					productsTotal += int64(it.Quantity) * int64(it.ProductPrice)
+				}
+			} else {
+				// agar TotalPrice ichida delivery ham qo‘shilgan bo‘lsa, ayirib tashlaymiz
+				if req.DeliveryPrice > 0 && productsTotal >= req.DeliveryPrice {
+					productsTotal -= req.DeliveryPrice
+				}
+			}
+
+			if productsTotal < ohangaronMin {
+				return "", "", structs.ErrMinOrder{
+					ZoneKey: "OHANGARON",
+					Min:     ohangaronMin,
+					Current: productsTotal,
+				}
+			}
+
 		default:
 			return "", "", structs.ErrOutOfDeliveryZone
 		}

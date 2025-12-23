@@ -573,9 +573,29 @@ func (c *Commands) SelectPaymentMethodHandler(ctx *tgrouter.Ctx) {
 		Products:      toOrderProducts(crt.Cart.Products),
 	}
 
-	_, orderID, err := c.orderSvc.Create(ctx.Context, req)
+	payURL, orderID, err := c.orderSvc.Create(ctx.Context, req)
 	if err != nil {
-		c.logger.Error(ctx.Context, "create order failed", zap.Error(err))
+		var me structs.ErrMinOrder
+		if errors.As(err, &me) {
+			zoneName := texts.Get(lang, texts.ZoneOhangaron)
+			if me.ZoneKey != "OHANGARON" {
+				zoneName = me.ZoneKey // fallback
+			}
+
+			cur := texts.Get(lang, texts.CurrencyUzs)
+			msgTmpl := texts.Get(lang, texts.MinOrderNotReached)
+
+			msg := fmt.Sprintf(
+				msgTmpl,
+				zoneName,
+				formatMoney(me.Min), cur,
+				formatMoney(me.Current), cur,
+			)
+
+			_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, msg))
+			return
+		}
+
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
 		return
 	}
@@ -600,7 +620,7 @@ func (c *Commands) SelectPaymentMethodHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 
-	payURL := strings.TrimSpace(ord.Order.PaymentUrl)
+	payURL = strings.TrimSpace(ord.Order.PaymentUrl)
 	if payURL == "" {
 		c.logger.Error(ctx.Context, "payment_url is empty after create", zap.String("order_id", orderID), zap.String("pm", paymentMethod))
 		_, _ = ctx.Bot().Send(tgbotapi.NewMessage(chatID, texts.Get(lang, texts.Retry)))
@@ -875,6 +895,24 @@ func normBtn(s string) string {
 		} else if r >= 0x0400 && r <= 0x04FF { // кириллица
 			b.WriteRune(r)
 		}
+	}
+	return b.String()
+}
+
+func formatMoney(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return s
+	}
+	var b strings.Builder
+	pre := len(s) % 3
+	if pre == 0 {
+		pre = 3
+	}
+	b.WriteString(s[:pre])
+	for i := pre; i < len(s); i += 3 {
+		b.WriteString(",")
+		b.WriteString(s[i : i+3])
 	}
 	return b.String()
 }

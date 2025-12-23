@@ -72,6 +72,10 @@ const (
 	OrderStatusRejected        TextKey = "order_status_rejected"
 
 	DeliveryZonesNotConfigured TextKey = "delivery_zones_not_configured"
+
+	MinOrderNotReached TextKey = "MinOrderNotReached"
+	ZoneOhangaron      TextKey = "ZoneOhangaron"
+	CurrencyUzs        TextKey = "CurrencyUzs"
 )
 
 var MapText = map[TextKey]utils.Language{
@@ -424,6 +428,21 @@ var MapText = map[TextKey]utils.Language{
 		UZ: "Hozircha bu hududga yetkazib berish mavjud emas",
 		RU: "Доставка в этот район пока недоступна",
 		EN: "Delivery is not available in this area yet",
+	},
+	ZoneOhangaron: {
+		UZ: "Ohangaron",
+		RU: "Aхангарaн",
+		EN: "Ohangaron",
+	},
+	CurrencyUzs: {
+		UZ: "so'm",
+		RU: "сум",
+		EN: "UZS",
+	},
+	MinOrderNotReached: {
+		UZ: "%s hududi uchun minimal buyurtma %s %s.\nHozir: %s %s.\nSavatga yana mahsulot qo‘shing.",
+		RU: "Для зоны %s минимальный заказ %s %s.\nСейчас: %s %s.\nДобавьте товары в корзину.",
+		EN: "Minimum order for %s is %s %s.\nCurrent: %s %s.\nPlease add more items to your cart.",
 	},
 }
 

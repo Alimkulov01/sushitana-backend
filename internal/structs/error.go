@@ -1,6 +1,9 @@
 package structs
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrBadRequest        = errors.New("bad request")
@@ -12,3 +15,13 @@ var (
 	ErrAlreadyBooked     = errors.New("allready booked")
 	ErrOutOfDeliveryZone = errors.New("the specified location is out of delivery.")
 )
+
+type ErrMinOrder struct {
+	ZoneKey string // masalan: "OHANGARON"
+	Min     int64
+	Current int64
+}
+
+func (e ErrMinOrder) Error() string {
+	return fmt.Sprintf("min order not reached: zone=%s min=%d current=%d", e.ZoneKey, e.Min, e.Current)
+}
