@@ -3,12 +3,14 @@ package order
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"sushitana/internal/order"
 	"sushitana/internal/responses"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	"sushitana/pkg/reply"
 	"sushitana/pkg/utils"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
@@ -196,15 +198,17 @@ func (h *handler) GetListOrder(c *gin.Context) {
 		filter   structs.GetListOrderRequest
 		ctx      = c.Request.Context()
 
-		offset        = c.Query("offset")
-		limit         = c.Query("limit")
-		status        = c.Query("status_order")
-		paymentStatus = c.Query("payment_status")
-		deliveryType  = c.Query("delivery_type")
-		paymentMethod = c.Query("payment_method")
-		createdAt     = c.Query("created_at")
-		orderNumber   = c.Query("order_number")
-		phoneNumber   = c.Query("phone_number")
+		offset           = c.Query("offset")
+		limit            = c.Query("limit")
+		status           = c.Query("status_order")
+		paymentStatus    = c.Query("payment_status")
+		deliveryType     = c.Query("delivery_type")
+		paymentMethod    = c.Query("payment_method")
+		createdAt        = c.Query("created_at")
+		orderNumber      = c.Query("order_number")
+		phoneNumber      = c.Query("phone_number")
+		createdAtFromStr = c.Query("created_at_from")
+		createdAtToStr   = c.Query("created_at_to")
 	)
 
 	filter.Limit = int64(utils.StrToInt(limit))
@@ -216,6 +220,27 @@ func (h *handler) GetListOrder(c *gin.Context) {
 	filter.CreatedAt = createdAt
 	filter.OrderNumber = cast.ToInt64(orderNumber)
 	filter.PhoneNumber = phoneNumber
+	if strings.TrimSpace(createdAtFromStr) != "" {
+		t, err := time.Parse(time.RFC3339Nano, createdAtFromStr)
+		if err != nil {
+			response = responses.BadRequest
+			response.Message = "invalid created_at_from (RFC3339 expected)"
+			defer reply.Json(c.Writer, http.StatusBadRequest, &response)
+			return
+		}
+		filter.CreatedAtFrom = &t
+	}
+
+	if strings.TrimSpace(createdAtToStr) != "" {
+		t, err := time.Parse(time.RFC3339Nano, createdAtToStr)
+		if err != nil {
+			response = responses.BadRequest
+			response.Message = "invalid created_at_to (RFC3339 expected)"
+			defer reply.Json(c.Writer, http.StatusBadRequest, &response)
+			return
+		}
+		filter.CreatedAtTo = &t
+	}
 	defer reply.Json(c.Writer, http.StatusOK, &response)
 
 	list, err := h.orderService.GetList(c, filter)
