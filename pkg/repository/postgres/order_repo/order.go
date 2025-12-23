@@ -625,7 +625,6 @@ func (r repo) Delete(ctx context.Context, order_id string) error {
 
 func (r repo) UpdateStatus(ctx context.Context, req structs.UpdateStatus) error {
 	r.logger.Info(ctx, "Update order status", zap.String("orderId", req.OrderId), zap.String("status", req.Status))
-
 	query := `
 		UPDATE orders
 		SET order_status = $2

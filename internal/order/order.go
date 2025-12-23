@@ -780,6 +780,9 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 	if newStatus == "" {
 		return nil
 	}
+	if ord.DeliveryType == "PICKUP" {
+		newStatus = "READY_FOR_PICKUP"
+	}
 
 	if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{OrderId: ord.ID, Status: newStatus}); err != nil {
 		s.logger.Error(ctx, "IIKO webhook UpdateStatus failed",
@@ -979,6 +982,8 @@ func mapIikoStatusToOurStatus(iikoStatus string) string {
 		return "ON_THE_WAY"
 	case strings.Contains(s, "ONWAY"):
 		return "DELIVERED"
+	case strings.Contains(s, "WAITING"):
+		return "READY_FOR_PICKUP"
 	case strings.Contains(s, "CLOSE") || strings.Contains(s, "COMPLETE"):
 		return "COMPLETED"
 	default:
