@@ -67,7 +67,7 @@ func (h *handler) CreateOrder(c *gin.Context) {
 		response = responses.BadRequest
 		return
 	}
-	request.TotalPrice = 1000
+
 	pay_url, _, err := h.orderService.Create(c, request)
 	if err != nil {
 		if errors.Is(err, structs.ErrUniqueViolation) {
