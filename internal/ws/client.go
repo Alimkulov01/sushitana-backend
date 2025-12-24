@@ -13,7 +13,15 @@ const (
 	maxMsgSize = 16 * 1024
 )
 
+type ClientKind string
+
+const (
+	KindUser  ClientKind = "user"
+	KindAdmin ClientKind = "admin"
+)
+
 type Client struct {
+	kind ClientKind
 	tgId int64
 	conn *websocket.Conn
 	hub  *Hub
@@ -22,7 +30,16 @@ type Client struct {
 
 func NewClient(tgId int64, conn *websocket.Conn, hub *Hub) *Client {
 	return &Client{
+		kind: KindUser,
 		tgId: tgId,
+		conn: conn,
+		hub:  hub,
+		send: make(chan []byte, 256),
+	}
+}
+func NewAdminClient(conn *websocket.Conn, hub *Hub) *Client {
+	return &Client{
+		kind: KindAdmin,
 		conn: conn,
 		hub:  hub,
 		send: make(chan []byte, 256),
@@ -40,7 +57,11 @@ func (c *Client) SendRaw(b []byte) {
 
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.Unregister(c.tgId, c)
+		if c.kind == KindAdmin {
+			c.hub.UnregisterAdmin(c)
+		} else {
+			c.hub.Unregister(c.tgId, c)
+		}
 		_ = c.conn.Close()
 	}()
 

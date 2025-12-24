@@ -20,6 +20,7 @@ var (
 type (
 	Handler interface {
 		OrdersWS(c *gin.Context)
+		AdminOrdersWS(c *gin.Context)
 	}
 
 	Params struct {
@@ -70,5 +71,17 @@ func (h *handler) OrdersWS(c *gin.Context) {
 	// ✅ Client ham internal/ws ichida bo‘lsa shu tarzda chaqiring
 	client := rtws.NewClient(tgId, conn, h.hub)
 	h.hub.Register(tgId, client)
+	client.Run()
+}
+
+func (h *handler) AdminOrdersWS(c *gin.Context) {
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		h.logger.Error(c.Request.Context(), "connection websocket err", zap.Error(err))
+		return
+	}
+
+	client := rtws.NewAdminClient(conn, h.hub)
+	h.hub.RegisterAdmin(client)
 	client.Run()
 }

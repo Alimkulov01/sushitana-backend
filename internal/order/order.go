@@ -79,7 +79,7 @@ type (
 		clickRepo  clickrepo.Repo
 		clientRepo clientrepo.Repo
 		bot        *tgbotapi.BotAPI `optional:"true"`
-		Hub        *rtws.Hub        `optional:"true"`
+		hub        *rtws.Hub        `optional:"true"`
 		zones      *utils.ZoneChecker
 
 		logger logger.Logger
@@ -103,8 +103,8 @@ func New(p Params) Service {
 		shopSvc:  p.ShopSvc,
 		iikoSvc:  p.IikoSvc,
 		zones:    p.Zones,
-
-		bot: p.Bot,
+		hub:      p.Hub,
+		bot:      p.Bot,
 	}
 }
 
@@ -244,6 +244,9 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			return "", "", err
 		}
 		s.notifyOrderStatusIfNeeded(ctx, ord.Order.ID, "WAITING_OPERATOR")
+		dto := mapOrdToDTO(ord)
+		dto.Status = "WAITING_OPERATOR" // ord eski bo'lishi mumkin
+		s.publishUpsertToAdmins(dto)
 		return "", ord.Order.ID, nil
 	}
 
@@ -309,6 +312,10 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			s.logger.Error(ctx, "->orderRepo.AddLink (CLICK)", zap.Error(err), zap.String("order_id", ord.Order.ID))
 			return "", ord.Order.ID, err
 		}
+		dto := mapOrdToDTO(ord)
+		dto.Status = "WAITING_PAYMENT"
+		dto.PaymentUrl = payURL
+		s.publishUpsertToAdmins(dto)
 		return payURL, ord.Order.ID, nil
 
 	case "PAYME":
@@ -330,6 +337,10 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 			s.logger.Error(ctx, "->orderRepo.AddLink (PAYME)", zap.Error(err), zap.String("order_id", ord.Order.ID))
 			return "", ord.Order.ID, err
 		}
+		dto := mapOrdToDTO(ord)
+		dto.Status = "WAITING_PAYMENT"
+		dto.PaymentUrl = payURL
+		s.publishUpsertToAdmins(dto)
 		return payURL, ord.Order.ID, nil
 
 	default:
@@ -837,8 +848,8 @@ func (s *service) notifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 	if !ok || target.TgID == 0 {
 		return
 	}
-	if s.Hub != nil {
-		s.Hub.BroadcastToUser(target.TgID, structs.Event{
+	if s.hub != nil {
+		s.hub.BroadcastToUser(target.TgID, structs.Event{
 			Type: structs.EventOrderPatch,
 			Payload: structs.OrderPatchPayload{
 				ID:          orderID,
@@ -1116,4 +1127,32 @@ func (s *service) DeliveryMapFound(ctx context.Context, req structs.MapFoundRequ
 		return 0, false, structs.ErrOutOfDeliveryZone
 	}
 	return price, available, nil
+}
+func (s *service) publishUpsertToAdmins(dto structs.OrderDTO) {
+	evt := structs.Event{
+		Type: structs.EventOrderUpsert,
+		Payload: structs.OrderUpsertPayload{
+			Order: dto,
+		},
+	}
+	s.hub.BroadcastToAdmins(evt)
+}
+
+func mapOrdToDTO(ord structs.GetListPrimaryKeyResponse) structs.OrderDTO {
+	return structs.OrderDTO{
+		ID:            ord.Order.ID,
+		TgID:          ord.Order.TgID,
+		Phone:         ord.Phone,
+		DeliveryType:  ord.Order.DeliveryType,
+		PaymentMethod: ord.Order.PaymentMethod,
+		PaymentStatus: ord.Order.PaymentStatus,
+		Status:        ord.Order.Status, // sizda field nomi qanday bo'lsa shunga moslang
+		TotalPrice:    ord.Order.TotalPrice,
+		TotalCount:    ord.Order.TotalCount,
+		DeliveryPrice: ord.Order.DeliveryPrice,
+		OrderNumber:   ord.Order.OrderNumber,
+		PaymentUrl:    ord.Order.PaymentUrl,
+		CreatedAt:     ord.Order.CreatedAt,
+		UpdateAt:      ord.Order.UpdateAt,
+	}
 }

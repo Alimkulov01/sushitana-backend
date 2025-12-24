@@ -160,9 +160,8 @@ func NewRouter(params Params) {
 		orderGroup.POST("/", params.Order.CreateOrder)
 		orderGroup.GET("/user/:id", params.Order.GetByTgIdOrder)
 		orderGroup.GET("/:id", params.Order.GetByIDOrder)
-		orderGroup.GET("/", params.Order.GetListOrder)
-		orderGroup.PUT("/", params.Order.UpdateStatusOrder)
-		orderGroup.PUT("/payment", params.Order.UpdateStatusPayment)
+		api.GET("/order/", params.Order.GetListOrder)      //yopiq
+		api.PUT("/order/", params.Order.UpdateStatusOrder) //yopiq
 		orderGroup.DELETE("/:id", params.Order.DeleteOrder)
 		orderGroup.POST("/delivery/conculation", params.Order.DeliveryMapFound)
 	}
@@ -172,6 +171,10 @@ func NewRouter(params Params) {
 		courierGroup.GET("/", params.Order.GetListOrder)
 		courierGroup.PUT("/", params.Order.UpdateStatusOrder)
 		out.GET("/ws/orders", params.WsHandler.OrdersWS)
+	}
+	wsGroup := api.Group("/ws")
+	{
+		wsGroup.GET("/admin/orders", params.WsHandler.AdminOrdersWS)
 	}
 	//iiko webhook
 	out.POST("/webhooks/iiko/:secret", params.Iiko.DeliveryOrderUpdate)

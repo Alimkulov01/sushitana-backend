@@ -96,21 +96,19 @@ func (m *mw) Perm(requiredPermission string) gin.HandlerFunc {
 			response structs.Response
 			ctx      = c.Request.Context()
 		)
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Missing token",
-			})
+
+		tokenString := extractToken(c)
+		if tokenString == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
 			return
 		}
-		tokenString := strings.Replace(authHeader, "Bearer ", "", 1)
+
 		resp, err := m.userSvc.GetMe(context.Background(), tokenString)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Token related error: " + err.Error(),
-			})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token related error: " + err.Error()})
 			return
 		}
+
 		hasPermission := false
 		for _, scope := range resp.Role.AccessScopes {
 			if scope.Name == requiredPermission {
@@ -119,14 +117,16 @@ func (m *mw) Perm(requiredPermission string) gin.HandlerFunc {
 			}
 		}
 		if !hasPermission {
-			m.logger.Warn(ctx, " user does not have permission",
-				zap.String("permission", requiredPermission))
+			m.logger.Warn(ctx, " user does not have permission", zap.String("permission", requiredPermission))
 			response = responses.Forbidden
-
 			c.Abort()
 			reply.Json(c.Writer, responses.ForbiddenCode, &response)
 			return
 		}
+
+		c.Set("me", resp)
+		c.Set("role", resp.Role.RoleName)
+
 		c.Next()
 	}
 }
@@ -185,4 +185,32 @@ func getRequiredPermission(endpoint string, method string) string {
 	}
 
 	return resource + "-" + action
+}
+
+func extractToken(c *gin.Context) string {
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if authHeader != "" {
+		t := strings.TrimPrefix(authHeader, "Bearer ")
+		t = strings.TrimPrefix(t, "bearer ")
+		return strings.TrimSpace(t)
+	}
+
+	if t := strings.TrimSpace(c.Query("token")); t != "" {
+		t = strings.TrimPrefix(t, "Bearer ")
+		t = strings.TrimPrefix(t, "bearer ")
+		return strings.TrimSpace(t)
+	}
+	if t := strings.TrimSpace(c.Query("access_token")); t != "" {
+		t = strings.TrimPrefix(t, "Bearer ")
+		t = strings.TrimPrefix(t, "bearer ")
+		return strings.TrimSpace(t)
+	}
+
+	if t, err := c.Cookie("ACCESS_TOKEN"); err == nil && strings.TrimSpace(t) != "" {
+		t = strings.TrimPrefix(strings.TrimSpace(t), "Bearer ")
+		t = strings.TrimPrefix(strings.TrimSpace(t), "bearer ")
+		return strings.TrimSpace(t)
+	}
+
+	return ""
 }

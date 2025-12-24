@@ -6,9 +6,11 @@ import (
 	"sync"
 	"time"
 )
+
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[int64]map[*Client]struct{} // tgId -> set(client)
+	admins  map[*Client]struct{}
 }
 
 func NewHub() *Hub {
@@ -63,4 +65,47 @@ func (h *Hub) BroadcastToUser(tgId int64, evt structs.Event) {
 	for _, c := range clients {
 		c.SendRaw(b)
 	}
+}
+
+// admin
+
+func (h *Hub) RegisterAdmin(c *Client) {
+	h.mu.Lock()
+	h.admins[c] = struct{}{}
+	h.mu.Unlock()
+}
+
+func (h *Hub) UnregisterAdmin(c *Client) {
+	h.mu.Lock()
+	delete(h.admins, c)
+	h.mu.Unlock()
+}
+
+func (h *Hub) BroadcastToAdmins(evt structs.Event) {
+	evt.TS = time.Now().UTC()
+
+	h.mu.Lock()
+	if len(h.admins) == 0 {
+		h.mu.Unlock()
+		return
+	}
+
+	clients := make([]*Client, 0, len(h.admins))
+	for c := range h.admins {
+		clients = append(clients, c)
+	}
+	h.mu.RUnlock()
+
+	b, err := json.Marshal(evt)
+	if err != nil {
+		return
+	}
+	for _, c := range clients {
+		c.SendRaw(b)
+	}
+}
+
+func (h *Hub) BroadcastToAdminsAndUser(tgId int64, evt structs.Event) {
+	h.BroadcastToAdmins(evt)
+	h.BroadcastToUser(tgId, evt)
 }
