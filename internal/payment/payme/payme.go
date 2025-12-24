@@ -354,13 +354,13 @@ func (s *service) PerformTransaction(ctx context.Context, p structs.PaymePerform
 	})
 
 	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-		OrderId: updated.OrderID,
+		OrderId: tx.OrderID,
 		Status:  "COOKING",
 	})
-	if err := s.orderFlow.SendToIikoIfAllowed(ctx, updated.OrderID); err != nil {
+	if err := s.orderFlow.SendToIikoIfAllowed(ctx, tx.OrderID); err != nil {
 		s.logger.Error(ctx, "sendToIikoIfAllowed failed", zap.Error(err))
 	}
-	s.orderFlow.NotifyOrderStatusIfNeeded(ctx, updated.OrderID, "PAID")
+	s.orderFlow.NotifyOrderStatusIfNeeded(ctx, tx.OrderID, "PAID")
 	return structs.PaymePerformResult{
 		Transaction: updated.PaycomTransactionID,
 		State:       updated.State,
