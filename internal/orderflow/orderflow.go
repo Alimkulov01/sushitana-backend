@@ -378,13 +378,13 @@ func (s *service) NotifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 		s.hub.BroadcastToUser(target.TgID, structs.Event{
 			Type: structs.EventOrderPatch,
 			Payload: structs.OrderPatchPayload{
-				ID:          orderID,
-				Status:      newStatus,
-				OrderNumber: int64(target.OrderNumber),
+				ID:            orderID,
+				PaymentStatus: newStatus,
+				OrderNumber:   int64(target.OrderNumber),
 			},
 		})
 	}
-	if newStatus == "WAITING_OPERATOR" {
+	if newStatus == "UNPAID" {
 		return
 	}
 
@@ -398,7 +398,7 @@ func (s *service) NotifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 		}
 	}
 
-	key := statusTextKey(newStatus)
+	key := statusTextKey("COOKING")
 	statusText := newStatus
 	if key != "" {
 		statusText = texts.Get(lang, key)
