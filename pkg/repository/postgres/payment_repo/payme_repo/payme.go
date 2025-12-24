@@ -32,7 +32,6 @@ type (
 	Repo interface {
 		Create(ctx context.Context, orderID string, paycomTransID string, amount string, createdTime int64) (structs.PaymeTransaction, error)
 		GetByPaycomTransactionID(ctx context.Context, paycomTransID string) (structs.PaymeTransaction, error)
-		GetActiveByOrderID(ctx context.Context, orderID string) (structs.PaymeTransaction, error)
 		MarkPerformed(ctx context.Context, paycomTransID string, performTime int64) (structs.PaymeTransaction, error)
 		MarkCanceled(ctx context.Context, paycomTransID string, cancelTime int64, reason int, newState int) (structs.PaymeTransaction, error)
 		GetStatement(ctx context.Context, from, to int64) ([]structs.PaymeTransaction, error)
@@ -138,39 +137,6 @@ func (r repo) GetByPaycomTransactionID(ctx context.Context, paycomTransID string
 			return structs.PaymeTransaction{}, structs.ErrNotFound
 		}
 		r.logger.Error(ctx, "payme GetByPaycomTransactionID failed", zap.Error(err))
-		return structs.PaymeTransaction{}, err
-	}
-	return tx, nil
-}
-
-func (r repo) GetActiveByOrderID(ctx context.Context, orderID string) (structs.PaymeTransaction, error) {
-	query := `
-		SELECT id, paycom_transaction_id, order_id, amount::text, state,
-			   created_time, perform_time, cancel_time, reason, created_at, updated_at
-		FROM payme_transactions
-		WHERE order_id = $1 AND state > 0
-		ORDER BY created_time DESC
-		LIMIT 1
-	`
-
-	var tx structs.PaymeTransaction
-	err := r.db.QueryRow(ctx, query, orderID, StateCreated).Scan(
-		&tx.ID,
-		&tx.PaycomTransactionID,
-		&tx.OrderID,
-		&tx.Amount,
-		&tx.State,
-		&tx.CreatedTime,
-		&tx.PerformTime,
-		&tx.CancelTime,
-		&tx.Reason,
-		&tx.CreatedAt,
-		&tx.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return structs.PaymeTransaction{}, structs.ErrNotFound
-		}
 		return structs.PaymeTransaction{}, err
 	}
 	return tx, nil

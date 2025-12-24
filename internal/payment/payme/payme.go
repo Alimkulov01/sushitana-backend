@@ -267,7 +267,7 @@ func (s *service) CreateTransaction(ctx context.Context, p structs.PaymeCreatePa
 
 	amountSom := tiyinToSomString(p.Amount)
 
-	tx, err := s.paymeRepo.Create(ctx, orderID, p.Id, amountSom, p.Time)
+	tx, err := s.paymeRepo.Create(ctx, ord.ID, p.Id, amountSom, p.Time)
 	if err != nil {
 		if strings.Contains(err.Error(), "payme_one_active_per_order_uq") &&
 			strings.Contains(err.Error(), "SQLSTATE 23505") {
