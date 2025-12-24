@@ -7,9 +7,14 @@ import (
 	"strings"
 	"sushitana/internal/iiko"
 	"sushitana/internal/structs"
+	"sushitana/internal/texts"
+	rtws "sushitana/internal/ws"
 	"sushitana/pkg/logger"
+	clientrepo "sushitana/pkg/repository/postgres/client_repo"
 	orderrepo "sushitana/pkg/repository/postgres/order_repo"
+	"sushitana/pkg/utils"
 
+	tgbotapi "github.com/ilpy20/telegram-bot-api/v7"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -18,26 +23,36 @@ var Module = fx.Provide(New)
 
 type Service interface {
 	SendToIikoIfAllowed(ctx context.Context, orderID string) error
+	NotifyOrderStatusIfNeeded(ctx context.Context, orderID string, newStatus string)
 }
 
 type Params struct {
 	fx.In
-	Logger    logger.Logger
-	OrderRepo orderrepo.Repo
-	IikoSvc   iiko.Service
+	Logger     logger.Logger
+	OrderRepo  orderrepo.Repo
+	ClientRepo clientrepo.Repo
+	Bot        *tgbotapi.BotAPI `optional:"true"`
+	Hub        *rtws.Hub        `optional:"true"`
+	IikoSvc    iiko.Service
 }
 
 type service struct {
-	logger    logger.Logger
-	orderRepo orderrepo.Repo
-	iikoSvc   iiko.Service
+	logger     logger.Logger
+	orderRepo  orderrepo.Repo
+	clientRepo clientrepo.Repo
+	iikoSvc    iiko.Service
+	bot        *tgbotapi.BotAPI `optional:"true"`
+	hub        *rtws.Hub        `optional:"true"`
 }
 
 func New(p Params) Service {
 	return &service{
-		logger:    p.Logger,
-		orderRepo: p.OrderRepo,
-		iikoSvc:   p.IikoSvc,
+		logger:     p.Logger,
+		orderRepo:  p.OrderRepo,
+		clientRepo: p.ClientRepo,
+		iikoSvc:    p.IikoSvc,
+		hub:        p.Hub,
+		bot:        p.Bot,
 	}
 }
 
@@ -326,4 +341,114 @@ func addDeliveryFeeItem(items *[]structs.IikoOrderItem, deliveryType string, del
 		Amount:    1,
 	})
 	return nil
+}
+
+func (s *service) NotifyOrderStatusIfNeeded(ctx context.Context, orderID string, newStatus string) {
+	if s.bot == nil {
+		return
+	}
+
+	s.logger.Info(ctx, "NotifyOrderStatusIfNeeded called",
+		zap.String("orderId", orderID),
+		zap.String("newStatus", newStatus),
+		zap.Bool("bot_nil", s.bot == nil),
+	)
+
+	target, ok, err := s.orderRepo.TryMarkNotified(ctx, orderID, newStatus)
+	s.logger.Info(ctx, "TryMarkNotified result",
+		zap.String("orderId", orderID),
+		zap.String("newStatus", newStatus),
+		zap.Bool("ok", ok),
+		zap.Int64("tgId", target.TgID),
+		zap.Int64("orderNumber", int64(target.OrderNumber)),
+		zap.Error(err),
+	)
+	if err != nil {
+		s.logger.Error(ctx, "TryMarkNotified failed",
+			zap.String("orderId", orderID),
+			zap.String("status", newStatus),
+			zap.Error(err),
+		)
+		return
+	}
+	if !ok || target.TgID == 0 {
+		return
+	}
+	if s.hub != nil {
+		s.hub.BroadcastToUser(target.TgID, structs.Event{
+			Type: structs.EventOrderPatch,
+			Payload: structs.OrderPatchPayload{
+				ID:          orderID,
+				Status:      newStatus,
+				OrderNumber: int64(target.OrderNumber),
+			},
+		})
+	}
+	if newStatus == "WAITING_OPERATOR" {
+		return
+	}
+
+	lang := utils.UZ // default
+	if s.clientRepo != nil {
+		l, e := s.clientRepo.GetLanguageByTgID(ctx, target.TgID)
+		if e == nil {
+			if ll, ok := toLang(l); ok {
+				lang = ll
+			}
+		}
+	}
+
+	key := statusTextKey(newStatus)
+	statusText := newStatus
+	if key != "" {
+		statusText = texts.Get(lang, key)
+	}
+
+	msg := fmt.Sprintf("📦 Zakaz #%d holati: %s", target.OrderNumber, statusText)
+	_, e := s.bot.Send(tgbotapi.NewMessage(target.TgID, msg))
+	if e != nil {
+		s.logger.Warn(ctx, "Telegram notify failed",
+			zap.Int64("tg_id", target.TgID),
+			zap.Error(e),
+		)
+	}
+}
+
+func toLang(s string) (utils.Lang, bool) {
+	v := strings.ToLower(strings.TrimSpace(s))
+	switch v {
+	case "uz":
+		return utils.UZ, true
+	case "ru":
+		return utils.RU, true
+	case "en":
+		return utils.EN, true
+	default:
+		return utils.UZ, false
+	}
+}
+
+func statusTextKey(st string) texts.TextKey {
+	switch st {
+	case "WAITING_PAYMENT":
+		return texts.OrderStatusWaitingPayment
+	case "WAITING_OPERATOR":
+		return texts.OrderStatusWaitingOperator
+	case "COOKING":
+		return texts.OrderStatusCooking
+	case "READY_FOR_PICKUP":
+		return texts.OrderStatusReadyForPickup
+	case "ON_THE_WAY":
+		return texts.OrderStatusOnTheWay
+	case "DELIVERED":
+		return texts.OrderStatusDelivered
+	case "COMPLETED":
+		return texts.OrderStatusCompleted
+	case "CANCELLED":
+		return texts.OrderStatusCancelled
+	case "REJECTED":
+		return texts.OrderStatusRejected
+	default:
+		return ""
+	}
 }
