@@ -30,7 +30,7 @@ type (
 		GetByInvoiceID(ctx context.Context, clickInvoiceID int64) (structs.Invoice, error)
 		GetByClickTransID(ctx context.Context, clickTransID int64) (structs.Invoice, error)
 		GetByPrepareID(ctx context.Context, merchantPrepareID int64) (structs.Invoice, error)
-
+		GetInvoiceByTransID(ctx context.Context, transID string) (structs.ClickInvoice, error)
 		UpsertPrepare(ctx context.Context, merchantTransID string, clickTransID, clickPaydocID int64, amount string) (merchantPrepareID int64, err error)
 		UpdateOnComplete(ctx context.Context, merchantTransID string, merchantPrepareID int64, clickTransID int64, status string) (invoiceID string, orderID sql.NullString, err error)
 	}
@@ -365,4 +365,38 @@ func (r repo) GetByPrepareID(ctx context.Context, merchantPrepareID int64) (stru
 	}
 
 	return resp, nil
+}
+
+func (r *repo) GetInvoiceByTransID(ctx context.Context, transID string) (structs.ClickInvoice, error) {
+	var inv structs.ClickInvoice
+
+	const query = `
+		SELECT
+			id,
+			order_id,
+			click_trans_id,
+			merchant_trans_id,
+			amount,
+			status,
+			created_at,
+			updated_at
+		FROM invoices
+		WHERE merchant_trans_id = $1
+		LIMIT 1
+	`
+
+	err := r.db.QueryRow(ctx, query, transID).Scan(
+		&inv.ID,
+		&inv.OrderID,
+		&inv.ClickTransID,
+		&inv.MerchantTransID,
+		&inv.Amount,
+		&inv.Status,
+		&inv.CreatedAt,
+		&inv.UpdatedAt,
+	)
+	if err != nil {
+		return inv, err
+	}
+	return inv, nil
 }

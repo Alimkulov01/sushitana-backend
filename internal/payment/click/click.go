@@ -15,8 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"sushitana/internal/orderflow"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
+	orderrepo "sushitana/pkg/repository/postgres/order_repo"
 	clickrepo "sushitana/pkg/repository/postgres/payment_repo/click_repo"
 
 	"github.com/spf13/cast"
@@ -33,6 +35,8 @@ type Params struct {
 	fx.In
 	Logger    logger.Logger
 	ClickRepo clickrepo.Repo
+	OrderRepo orderrepo.Repo
+	OrderFlow orderflow.Service
 }
 
 type Service interface {
@@ -49,6 +53,8 @@ type Service interface {
 type service struct {
 	logger    logger.Logger
 	clickrepo clickrepo.Repo
+	orderRepo orderrepo.Repo
+	orderFlow orderflow.Service
 	client    *http.Client
 }
 
@@ -59,6 +65,8 @@ func New(p Params) Service {
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
+		orderRepo: p.OrderRepo,
+		orderFlow: p.OrderFlow,
 	}
 }
 func md5hex(s string) string {
@@ -182,70 +190,6 @@ func (s *service) ShopPrepare(ctx context.Context, req structs.ClickPrepareReque
 	}, nil
 }
 
-func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error) {
-	if req.Action == nil || *req.Action != 1 {
-		return structs.ClickCompleteResponse{
-			ClickTransId: req.ClickTransId,
-			Error:        -3,
-			ErrorNote:    "Action not found",
-		}, nil
-	}
-
-	secret := os.Getenv("CLICK_SECRET_KEY")
-	if secret == "" {
-		return structs.ClickCompleteResponse{Error: -8, ErrorNote: "Server config error"}, errors.New("CLICK_SECRET_KEY empty")
-	}
-
-	if !s.validateCompleteSign(req, secret) {
-		return structs.ClickCompleteResponse{
-			ClickTransId:    req.ClickTransId,
-			MerchantTransId: req.MerchantTransId,
-			Error:           -1,
-			ErrorNote:       "SIGN CHECK FAILED!",
-		}, nil
-	}
-
-	// SMS(invoice) flow: merchant_trans_id bo‘sh kelsa ham to‘lovni sindirmaymiz
-	if strings.TrimSpace(req.MerchantTransId) == "" {
-		s.logger.Warn(ctx, "click complete without merchant_trans_id (invoice/SMS flow)",
-			zap.Int64("click_trans_id", req.ClickTransId),
-			zap.Int64("merchant_prepare_id", req.MerchantPrepareId),
-			zap.String("amount", req.Amount),
-		)
-		return structs.ClickCompleteResponse{
-			ClickTransId:      req.ClickTransId,
-			MerchantTransId:   "",
-			MerchantConfirmId: req.MerchantPrepareId,
-			Error:             0,
-			ErrorNote:         "Success",
-		}, nil
-	}
-
-	// Shop flow (mti bor) => eski repo update
-	status := "PAID"
-	if req.Error != nil && *req.Error != 0 {
-		status = "FAILED"
-	}
-
-	_, _, err := s.clickrepo.UpdateOnComplete(ctx, req.MerchantTransId, req.MerchantPrepareId, req.ClickTransId, status)
-	if err != nil {
-		return structs.ClickCompleteResponse{
-			ClickTransId:    req.ClickTransId,
-			MerchantTransId: req.MerchantTransId,
-			Error:           -7,
-			ErrorNote:       "Failed to update invoice",
-		}, nil
-	}
-
-	return structs.ClickCompleteResponse{
-		ClickTransId:      req.ClickTransId,
-		MerchantTransId:   req.MerchantTransId,
-		MerchantConfirmId: req.MerchantPrepareId,
-		Error:             0,
-		ErrorNote:         "Success",
-	}, nil
-}
-
 func (s *service) CheckoutPrepare(ctx context.Context, req structs.CheckoutPrepareRequest) (structs.CheckoutPrepareResponse, error) {
 	url := "https://api.click.uz/v2/internal/checkout/prepare"
 
@@ -310,7 +254,6 @@ func (s *service) CreateClickInvoice(ctx context.Context, req structs.CreateInvo
 	if err != nil {
 		return structs.CreateInvoiceResponse{}, err
 	}
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>", httpReq)
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Auth", auth)
@@ -421,9 +364,6 @@ func (s *service) Retrieve(ctx context.Context, requestId string) (structs.Retri
 		return resp, fmt.Errorf("click retrieve non-200: %d", httpResp.StatusCode)
 	}
 
-	// Retrieve response ham error_code bilan keladi (agar structda bo'lsa)
-	// if resp.ErrorCode != 0 { return resp, errors.New(resp.ErrorNote) }
-
 	return resp, nil
 }
 
@@ -475,4 +415,75 @@ func (s *service) InvoiceStatus(ctx context.Context, serviceID int64, invoiceID 
 	}
 
 	return out, nil
+}
+func (s *service) ShopComplete(ctx context.Context, req structs.ClickCompleteRequest) (structs.ClickCompleteResponse, error) {
+	resp := structs.ClickCompleteResponse{
+		Error:     0,
+		ErrorNote: "Success",
+	}
+
+	// 1) Invoice topish
+	invoice, err := s.clickrepo.GetInvoiceByTransID(ctx, req.MerchantTransId)
+	if err != nil {
+		resp.Error = -31003
+		resp.ErrorNote = "Invoice not found"
+		return resp, nil
+	}
+
+	// 2) Click tomonidan kelgan xato status
+	if req.Error != nil && *req.Error != 0 {
+		// xato bo‘lsa UNPAID qilib qo‘yamiz
+		_ = s.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
+			OrderId: invoice.OrderID,
+			Status:  "UNPAID",
+		})
+		return resp, nil
+	}
+
+	// 3) Transaction complete
+	status := "PAID"
+	_, orderID, err := s.clickrepo.UpdateOnComplete(
+		ctx,
+		req.MerchantTransId,
+		req.MerchantPrepareId,
+		req.ClickTransId,
+		status,
+	)
+	if err != nil {
+		s.logger.Error(ctx, "click.UpdateOnComplete failed", zap.Error(err))
+		return resp, err
+	}
+
+	if !orderID.Valid || orderID.String == "" {
+		s.logger.Warn(ctx, "click complete: order_id is NULL", zap.String("merchantTransId", req.MerchantTransId))
+		return resp, nil
+	}
+	oid := orderID.String
+
+	// 4) payment_status = PAID
+	if err := s.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
+		OrderId: oid,
+		Status:  "PAID",
+	}); err != nil {
+		s.logger.Error(ctx, "order.UpdatePaymentStatus failed", zap.Error(err))
+		return resp, err
+	}
+
+	// 5) order_status = COOKING
+	if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
+		OrderId: oid,
+		Status:  "COOKING",
+	}); err != nil {
+		s.logger.Error(ctx, "order.UpdateStatus failed", zap.Error(err))
+	}
+
+	// 6) iiko'ga yuborish (faqat PAID bo‘lganda)
+	if err := s.orderFlow.SendToIikoIfAllowed(ctx, oid); err != nil {
+		s.logger.Error(ctx, "SendToIikoIfAllowed failed", zap.Error(err))
+	}
+
+	// 7) notify (COOKING)
+	s.orderFlow.NotifyOrderStatusIfNeeded(ctx, oid, "COOKING")
+
+	return resp, nil
 }

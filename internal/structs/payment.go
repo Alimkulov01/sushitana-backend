@@ -47,6 +47,17 @@ type ClickCompleteResponse struct {
 	ErrorNote         string `json:"error_note"`
 }
 
+type ClickInvoice struct {
+	ID              string
+	OrderID         string
+	ClickTransID    string
+	MerchantTransID string
+	Amount          float64
+	Status          string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 type Invoice struct {
 	ID                int64
 	ClickInvoiceID    int64

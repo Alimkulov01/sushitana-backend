@@ -171,7 +171,6 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		paymentKind = "Cash"
 		paymentTypeID = paymentCashID
 	case "CLICK":
-		// Tavsiya: ko'p iiko accountlarda "External" + processedExternally ishlaydi
 		paymentKind = "External"
 		processedExternally = true
 		paymentTypeID = paymentClickID
@@ -384,7 +383,7 @@ func (s *service) NotifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 			},
 		})
 	}
-	if newStatus == "UNPAID" {
+	if newStatus == "WAITING_OPERATOR" {
 		return
 	}
 
@@ -398,7 +397,7 @@ func (s *service) NotifyOrderStatusIfNeeded(ctx context.Context, orderID string,
 		}
 	}
 
-	key := statusTextKey("COOKING")
+	key := statusTextKey(newStatus)
 	statusText := newStatus
 	if key != "" {
 		statusText = texts.Get(lang, key)
