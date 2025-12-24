@@ -34,7 +34,7 @@ import (
 
 const (
 	ohangaronMin = int64(400000)
-	// olmaliqMin   = int64(60000)
+	olmaliqMin   = int64(60000)
 )
 
 var (
@@ -186,14 +186,25 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		switch idx {
 		case 0: // olmaliq.json
 			req.DeliveryPrice = 0
-			// productsTotal := req.TotalPrice
-			// if productsTotal < olmaliqMin {
-			// 	return "", "", structs.ErrMinOrder{
-			// 		ZoneKey: "OLMALIQ",
-			// 		Min:     olmaliqMin,
-			// 		Current: productsTotal,
-			// 	}
-			// }
+			productsTotal := req.TotalPrice
+			if productsTotal <= 0 {
+				for _, it := range req.Products {
+					// it.Price / it.ProductPrice sizning struct field nomingizga mos bo‘lsin:
+					productsTotal += int64(it.Quantity) * int64(it.ProductPrice)
+				}
+			} else {
+				// agar TotalPrice ichida delivery ham qo‘shilgan bo‘lsa, ayirib tashlaymiz
+				if req.DeliveryPrice > 0 && productsTotal >= req.DeliveryPrice {
+					productsTotal -= req.DeliveryPrice
+				}
+			}
+			if productsTotal < olmaliqMin {
+				return "", "", structs.ErrMinOrder{
+					ZoneKey: "OLMALIQ",
+					Min:     olmaliqMin,
+					Current: productsTotal,
+				}
+			}
 
 		case 1: // ohangaron.json
 			req.DeliveryPrice = 25000
