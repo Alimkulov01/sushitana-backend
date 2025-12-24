@@ -32,7 +32,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const ohangaronMin = int64(400000)
+const (
+	ohangaronMin = int64(400000)
+	olmaliqMin   = int64(60000)
+)
 
 var (
 	Module = fx.Provide(New)
@@ -183,6 +186,14 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		switch idx {
 		case 0: // olmaliq.json
 			req.DeliveryPrice = 0
+			// productsTotal := req.TotalPrice
+			// if productsTotal < olmaliqMin {
+			// 	return "", "", structs.ErrMinOrder{
+			// 		ZoneKey: "OLMALIQ",
+			// 		Min:     olmaliqMin,
+			// 		Current: productsTotal,
+			// 	}
+			// }
 
 		case 1: // ohangaron.json
 			req.DeliveryPrice = 25000
@@ -1155,4 +1166,8 @@ func mapOrdToDTO(ord structs.GetListPrimaryKeyResponse) structs.OrderDTO {
 		CreatedAt:     ord.Order.CreatedAt,
 		UpdateAt:      ord.Order.UpdateAt,
 	}
+}
+
+func (s *service) TrySendToIiko(ctx context.Context, orderID string) error {
+	return s.sendToIikoIfAllowed(ctx, orderID)
 }

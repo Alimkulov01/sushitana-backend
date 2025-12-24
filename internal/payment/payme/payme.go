@@ -7,6 +7,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sushitana/internal/iiko"
+	"sushitana/internal/orderflow"
 	"sushitana/internal/structs"
 	"sushitana/pkg/logger"
 	orderrepo "sushitana/pkg/repository/postgres/order_repo"
@@ -28,6 +30,8 @@ type (
 		Logger    logger.Logger
 		OrderRepo orderrepo.Repo
 		PaymeRepo paymerepo.Repo
+		OrderFlow orderflow.Service
+		IikoSvc   iiko.Service
 	}
 	Service interface {
 		CheckPerformTransaction(ctx context.Context, p structs.PaymeCheckPerformParams) (structs.PaymeCheckPerformResult, structs.RPCError)
@@ -42,6 +46,8 @@ type (
 		logger    logger.Logger
 		orderRepo orderrepo.Repo
 		paymeRepo paymerepo.Repo
+		orderFlow orderflow.Service
+		iikoSvc   iiko.Service
 	}
 )
 
@@ -50,6 +56,8 @@ func New(p Params) Service {
 		logger:    p.Logger,
 		orderRepo: p.OrderRepo,
 		paymeRepo: p.PaymeRepo,
+		iikoSvc:   p.IikoSvc,
+		orderFlow: p.OrderFlow,
 	}
 }
 
@@ -340,11 +348,18 @@ func (s *service) PerformTransaction(ctx context.Context, p structs.PaymePerform
 		s.logger.Error(ctx, "payme MarkPerformed failed", zap.Error(err))
 		return structs.PaymePerformResult{}, rpcErr(-32400, "Внутренняя ошибка", "Ichki xato", "Internal error", nil)
 	}
+	_ = s.orderRepo.UpdatePaymentStatus(ctx, structs.UpdateStatus{
+		OrderId: tx.OrderID, // UUID
+		Status:  "PAID",
+	})
 
 	_ = s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
 		OrderId: updated.OrderID,
-		Status:  "WAITING_OPERATOR",
+		Status:  "COOKING",
 	})
+	if err := s.orderFlow.SendToIikoIfAllowed(ctx, updated.OrderID); err != nil {
+		s.logger.Error(ctx, "sendToIikoIfAllowed failed", zap.Error(err))
+	}
 
 	return structs.PaymePerformResult{
 		Transaction: updated.PaycomTransactionID,

@@ -10,6 +10,7 @@ import (
 	"sushitana/internal/iiko"
 	"sushitana/internal/menu"
 	"sushitana/internal/order"
+	"sushitana/internal/orderflow"
 	"sushitana/internal/payment/click"
 	"sushitana/internal/payment/payme"
 	shopapi "sushitana/internal/payment/shop-api"
@@ -33,6 +34,7 @@ var Module = fx.Options(
 	iiko.Module,
 	menu.Module,
 	order.Module,
+	orderflow.Module,
 	click.Module,
 	payme.Module,
 	shopapi.Module,
