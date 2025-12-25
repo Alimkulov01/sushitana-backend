@@ -54,8 +54,9 @@ func (c *Commands) MenuCategoryHandler(ctx *tgrouter.Ctx) {
 		return
 	}
 	lang := account.Language
+	active := true
 	cats, err := c.CategorySvc.GetList(ctx.Context, structs.GetListCategoryRequest{
-		IsActive: true,
+		IsActive: &active,
 	})
 	if err != nil {
 		c.logger.Error(ctx.Context, "failed to get categories", zap.Error(err))

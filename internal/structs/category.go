@@ -47,7 +47,7 @@ type GetListCategoryRequest struct {
 	Offset   int64  `json:"offset"`
 	Limit    int64  `json:"limit"`
 	Search   string `json:"search"`
-	IsActive bool   `json:"is_active"`
+	IsActive *bool  `json:"is_active"`
 }
 
 type GetListCategoryResponse struct {

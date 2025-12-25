@@ -213,6 +213,7 @@ func (r *repo) GetByID(ctx context.Context, id string) (structs.Category, error)
 func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) (resp structs.GetListCategoryResponse, err error) {
 	r.logger.Info(ctx, "GetList Category", zap.Any("req", req))
 
+	// defaults
 	limit := int64(100)
 	offset := int64(0)
 
@@ -223,47 +224,80 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 		offset = req.Offset
 	}
 
-	where := "WHERE TRUE"
+	// $1=limit, $2=offset
 	args := []any{limit, offset}
-	if req.IsActive {
-		where += `
-			AND COALESCE(is_active, false) = true
-			AND COALESCE(is_deleted, false) = false
-		`
+	argPos := 3
+
+	clauses := []string{
+		`COALESCE(is_deleted, false) = false`,
 	}
 
+	// is_active filter
+	if req.IsActive != nil {
+		clauses = append(clauses, fmt.Sprintf(`COALESCE(is_active, false) = $%d`, argPos))
+		args = append(args, *req.IsActive)
+		argPos++
+	}
+
+	// search (3 tilda)
+	if s := strings.TrimSpace(req.Search); s != "" {
+		clauses = append(clauses, fmt.Sprintf(`
+			(
+				name->>'uz' ILIKE $%d OR
+				name->>'ru' ILIKE $%d OR
+				name->>'en' ILIKE $%d
+			)
+		`, argPos, argPos, argPos))
+		args = append(args, "%"+s+"%")
+		argPos++
+	}
+
+	where := "WHERE " + strings.Join(clauses, " AND ")
+
 	query := fmt.Sprintf(`
-		SELECT 
-			COUNT(*) OVER(), 
-			id, 
-			name, 
-			post_id, 
-			COALESCE(is_active, false) AS is_active, 
-			"index", 
-			created_at, 
-			updated_at, 
-			parent_id, 
-			COALESCE(is_included_in_menu, false) AS is_included_in_menu, 
-			COALESCE(is_group_modifier, false) AS is_group_modifier, 
-			COALESCE(is_deleted, false) AS is_deleted 
+		SELECT
+			COUNT(*) OVER() AS total_count,
+			id,
+			name,
+			post_id,
+			COALESCE(is_active, false) AS is_active,
+			"index",
+			created_at,
+			updated_at,
+			parent_id,
+			COALESCE(is_included_in_menu, false) AS is_included_in_menu,
+			COALESCE(is_group_modifier, false) AS is_group_modifier,
+			COALESCE(is_deleted, false) AS is_deleted
 		FROM category
 		%s
-		ORDER BY "index" ASC, created_at DESC 
+		ORDER BY "index" ASC, created_at DESC
 		LIMIT $1 OFFSET $2;
 	`, where)
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
-		r.logger.Error(ctx, "err on r.db.Query", zap.Error(err))
+		r.logger.Error(ctx, "err on r.db.Query",
+			zap.Error(err),
+			zap.String("query", query),
+			zap.Any("args", args),
+		)
 		return resp, fmt.Errorf("query failed: %w", err)
 	}
 	defer rows.Close()
 
-	list := make([]structs.Category, 0, limit)
+	// cap (int bo'lishi shart)
+	capSize := int(limit)
+	if capSize < 0 {
+		capSize = 0
+	}
+	if capSize > 100 {
+		capSize = 100
+	}
+
+	list := make([]structs.Category, 0, capSize)
 
 	for rows.Next() {
 		var c structs.Category
-
 		if err := rows.Scan(
 			&resp.Count,
 			&c.ID,
@@ -281,7 +315,6 @@ func (r *repo) GetList(ctx context.Context, req structs.GetListCategoryRequest) 
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
 			return resp, fmt.Errorf("row scan failed: %w", err)
 		}
-
 		list = append(list, c)
 	}
 

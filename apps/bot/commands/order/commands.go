@@ -391,7 +391,6 @@ func (c *Commands) ShowCheckoutPreview(ctx *tgrouter.Ctx) {
 			utils.FCurrency(float64(lineTotal)),
 		)
 	}
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>", deliveryPrice)
 	// delivery line (agar DELIVERY bo'lsa ko'rsatamiz)
 	if deliveryType == "DELIVERY" && deliveryPrice > 0 {
 		if strings.ToLower(string(lang)) == "uz" {
@@ -652,7 +651,9 @@ func (c *Commands) SelectPaymentMethodHandler(ctx *tgrouter.Ctx) {
 	rm := tgbotapi.NewMessage(chatID, "\u200b")
 	rm.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 	_, _ = ctx.Bot().Send(rm)
-
+	if err := c.cartSvc.Clear(ctx.Context, account.TgID); err != nil {
+		c.logger.Error(ctx.Context, "cart clear failed", zap.Error(err), zap.Int64("tg_id", account.TgID))
+	}
 	_ = ctx.UpdateState("waiting_payment", map[string]string{"order_id": orderID})
 }
 
