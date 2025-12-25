@@ -3,9 +3,7 @@ package order
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -152,6 +150,7 @@ func NormalizePaymentMethod(v string) (string, error) {
 }
 
 func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, string, error) {
+	// 0) normalize
 	dt, err := NormalizeDeliveryType(req.DeliveryType)
 	if err != nil {
 		return "", "", err
@@ -163,11 +162,24 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 	req.DeliveryType = dt
 	req.PaymentMethod = pm
 
+	// 1) validate products
+	if len(req.Products) == 0 {
+		return "", "", structs.ErrBadRequest // yaxshisi: ErrCartEmpty
+	}
+	for _, it := range req.Products {
+		if strings.TrimSpace(it.ID) == "" || it.Quantity <= 0 {
+			return "", "", structs.ErrBadRequest
+		}
+	}
+
+	// 2) delivery type validate + zone check
+	var zoneIdx int
 	switch req.DeliveryType {
 	case "PICKUP":
 		if req.Address == nil {
 			req.Address = &structs.Address{Lat: 0, Lng: 0, Name: "", DistanceKm: 0}
 		}
+		req.DeliveryPrice = 0
 
 	case "DELIVERY":
 		if req.Address == nil {
@@ -181,23 +193,76 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		if !ok {
 			return "", "", structs.ErrOutOfDeliveryZone
 		}
+		zoneIdx = idx
 
-		// 1) delivery price
-		switch idx {
+	default:
+		return "", "", structs.ErrBadRequest
+	}
+
+	// 3) productsTotal'ni DB’dan hisoblaymiz (box ham qo‘shiladi)
+	//    (min order DELIVERY uchun faqat mahsulotlar/box summasi, delivery kirmaydi)
+	var (
+		prodCache  = map[string]structs.ProductMeta{}
+		boxCache   = map[string]structs.BoxMeta{}
+		orderTotal int64
+		boxTotal   int64
+	)
+
+	for i := range req.Products {
+		pid := strings.TrimSpace(req.Products[i].ID)
+
+		pm, ok := prodCache[pid]
+		if !ok {
+			price, name, url, boxID, err := s.orderRepo.GetProductPriceWithBox(ctx, pid)
+			if err != nil {
+				s.logger.Warn(ctx, "product price not found", zap.String("product_id", pid), zap.Error(err))
+				return "", "", structs.ErrBadRequest
+			}
+			pm = structs.ProductMeta{
+				Price: price,
+				Name:  name,
+				Url:   url,
+				BoxID: strings.TrimSpace(boxID),
+			}
+			prodCache[pid] = pm
+		}
+
+		qty := req.Products[i].Quantity
+		orderTotal += pm.Price * qty
+
+		// req.Products ichini ham boyitib qo'yamiz (orders.items JSONB'ga shular tushadi)
+		req.Products[i].ProductName = pm.Name
+		req.Products[i].ProductPrice = pm.Price
+		req.Products[i].ProductUrl = pm.Url
+		req.Products[i].BoxID = pm.BoxID
+
+		// box hisoblash
+		if pm.BoxID != "" {
+			bm, ok := boxCache[pm.BoxID]
+			if !ok {
+				bp, bn, _, _, err := s.orderRepo.GetProductPriceWithBox(ctx, pm.BoxID)
+				if err != nil {
+					s.logger.Warn(ctx, "box price not found", zap.String("box_id", pm.BoxID), zap.Error(err))
+					// box yo'q bo'lsa ham orderni bloklamaslikni xohlasangiz: continue qiling
+					return "", "", structs.ErrBadRequest
+				}
+				bm = structs.BoxMeta{Price: bp, Name: bn}
+				boxCache[pm.BoxID] = bm
+			}
+			boxTotal += bm.Price * qty
+
+			req.Products[i].BoxName = bm.Name
+			req.Products[i].BoxPrice = bm.Price
+		}
+	}
+
+	productsTotal := orderTotal + boxTotal
+
+	// 4) delivery price + min order check
+	if req.DeliveryType == "DELIVERY" {
+		switch zoneIdx {
 		case 0: // olmaliq.json
 			req.DeliveryPrice = 0
-			productsTotal := req.TotalPrice
-			if productsTotal <= 0 {
-				for _, it := range req.Products {
-					// it.Price / it.ProductPrice sizning struct field nomingizga mos bo‘lsin:
-					productsTotal += int64(it.Quantity) * int64(it.ProductPrice)
-				}
-			} else {
-				// agar TotalPrice ichida delivery ham qo‘shilgan bo‘lsa, ayirib tashlaymiz
-				if req.DeliveryPrice > 0 && productsTotal >= req.DeliveryPrice {
-					productsTotal -= req.DeliveryPrice
-				}
-			}
 			if productsTotal < olmaliqMin {
 				return "", "", structs.ErrMinOrder{
 					ZoneKey: "OLMALIQ",
@@ -208,23 +273,6 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 		case 1: // ohangaron.json
 			req.DeliveryPrice = 25000
-
-			// 2) MIN ORDER CHECK (faqat mahsulotlar summasi bo‘yicha)
-			productsTotal := req.TotalPrice
-
-			// agar TotalPrice bo‘sh/0 kelayotgan bo‘lsa, itemlardan hisoblab oling
-			if productsTotal <= 0 {
-				for _, it := range req.Products {
-					// it.Price / it.ProductPrice sizning struct field nomingizga mos bo‘lsin:
-					productsTotal += int64(it.Quantity) * int64(it.ProductPrice)
-				}
-			} else {
-				// agar TotalPrice ichida delivery ham qo‘shilgan bo‘lsa, ayirib tashlaymiz
-				if req.DeliveryPrice > 0 && productsTotal >= req.DeliveryPrice {
-					productsTotal -= req.DeliveryPrice
-				}
-			}
-
 			if productsTotal < ohangaronMin {
 				return "", "", structs.ErrMinOrder{
 					ZoneKey: "OHANGARON",
@@ -236,17 +284,11 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		default:
 			return "", "", structs.ErrOutOfDeliveryZone
 		}
-
-	default:
-		return "", "", structs.ErrBadRequest
 	}
 
-	// 1) Create order in DB
+	// 5) Create order in DB (repo status/paysni payment method bo'yicha o'zi qo'yadi)
 	id, err := s.orderRepo.Create(ctx, req)
 	if err != nil {
-		if errors.Is(err, structs.ErrUniqueViolation) {
-			return "", "", err
-		}
 		s.logger.Error(ctx, "->orderRepo.Create", zap.Error(err))
 		return "", "", err
 	}
@@ -257,33 +299,14 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		return "", "", err
 	}
 
-	// 2) For CASH: set status WAITING_OPERATOR and return orderID
+	// 6) CASH bo'lsa link yo'q
 	if req.PaymentMethod == "CASH" {
-		if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-			OrderId: ord.Order.ID,
-			Status:  "WAITING_OPERATOR",
-		}); err != nil {
-			return "", "", err
-		}
-		s.notifyOrderStatusIfNeeded(ctx, ord.Order.ID, "WAITING_OPERATOR")
-		dto := mapOrdToDTO(ord)
-		dto.Status = "WAITING_OPERATOR" // ord eski bo'lishi mumkin
-		s.publishUpsertToAdmins(dto)
-		return "", ord.Order.ID, nil
+		return "", id, nil
 	}
 
-	// 3) Online payments: set WAITING_PAYMENT and create payment_url once, save to DB.
-	if err := s.orderRepo.UpdateStatus(ctx, structs.UpdateStatus{
-		OrderId: ord.Order.ID,
-		Status:  "WAITING_PAYMENT",
-	}); err != nil {
-		return "", "", err
-	}
-	s.notifyOrderStatusIfNeeded(ctx, ord.Order.ID, "WAITING_PAYMENT")
-
-	// idempotent: if already has link, just return it
+	// 7) Online bo'lsa (CLICK/PAYME) payment link yaratamiz (agar oldin saqlangan bo'lsa qaytaramiz)
 	if strings.TrimSpace(ord.Order.PaymentUrl) != "" {
-		return ord.Order.PaymentUrl, ord.Order.ID, nil
+		return ord.Order.PaymentUrl, id, nil
 	}
 
 	switch req.PaymentMethod {
@@ -291,59 +314,42 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		serviceId := strings.TrimSpace(os.Getenv("CLICK_SERVICE_ID"))
 		merchantId := strings.TrimSpace(os.Getenv("CLICK_MERCHANT_ID"))
 		if serviceId == "" || merchantId == "" {
-			return "", ord.Order.ID, fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
+			return "", id, fmt.Errorf("CLICK_SERVICE_ID yoki CLICK_MERCHANT_ID env not found")
 		}
 
 		merchantTransID := cast.ToString(ord.Order.OrderNumber)
-
 		amountInt := ord.Order.TotalPrice
-		amount := float64(amountInt)
 
-		_, err := s.clickSvc.CheckoutPrepare(ctx, structs.CheckoutPrepareRequest{
+		// prepare
+		prep, err := s.clickSvc.CheckoutPrepare(ctx, structs.CheckoutPrepareRequest{
 			ServiceID:        serviceId,
 			MerchantID:       merchantId,
 			TransactionParam: merchantTransID,
-			Amount:           amount,
+			Amount:           float64(amountInt),
 			Description:      fmt.Sprintf("Order #%d", ord.Order.OrderNumber),
 		})
 		if err != nil {
-			return "", ord.Order.ID, fmt.Errorf("click checkout/prepare failed: %w", err)
+			return "", id, fmt.Errorf("click checkout/prepare failed: %w", err)
 		}
 
-		// invoice create
-		inv := structs.Invoice{
-			MerchantTransID: merchantTransID,
-			OrderID:         sql.NullString{String: ord.Order.ID, Valid: true},
-			TgID:            sql.NullInt64{Int64: ord.Order.TgID, Valid: true},
-			CustomerPhone:   sql.NullString{String: ord.Phone, Valid: true},
-			Amount:          cast.ToString(amountInt),
-			Currency:        "UZS",
-			Status:          "WAITING_PAYMENT",
-		}
-		if _, err := s.clickRepo.Create(ctx, inv); err != nil {
-			return "", ord.Order.ID, err
-		}
+		// orderga click info yozib qo'yish (request_id / transaction_param)
+		_ = s.orderRepo.UpdateClickInfo(ctx, id, prep.RequestId, merchantTransID)
 
 		sid := cast.ToInt64(serviceId)
-		payURL := s.BuildClickPayURL(sid, merchantId, int64(amountInt), merchantTransID, "")
-		if strings.TrimSpace(payURL) == "" {
-			return "", ord.Order.ID, fmt.Errorf("click pay url is empty")
+		payURL := s.BuildClickPayURL(sid, merchantId, amountInt, merchantTransID, "")
+		if payURL == "" {
+			return "", id, fmt.Errorf("click pay url empty")
 		}
 
-		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
-			s.logger.Error(ctx, "->orderRepo.AddLink (CLICK)", zap.Error(err), zap.String("order_id", ord.Order.ID))
-			return "", ord.Order.ID, err
+		if err := s.orderRepo.AddLink(ctx, payURL, id); err != nil {
+			return "", id, err
 		}
-		dto := mapOrdToDTO(ord)
-		dto.Status = "WAITING_PAYMENT"
-		dto.PaymentUrl = payURL
-		s.publishUpsertToAdmins(dto)
-		return payURL, ord.Order.ID, nil
+		return payURL, id, nil
 
 	case "PAYME":
 		merchantID := strings.TrimSpace(os.Getenv("PAYME_KASSA_ID"))
 		if merchantID == "" {
-			return "", ord.Order.ID, fmt.Errorf("PAYME_KASSA_ID env not found")
+			return "", id, fmt.Errorf("PAYME_KASSA_ID env not found")
 		}
 
 		amountTiyin := ord.Order.TotalPrice * 100
@@ -351,22 +357,16 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 
 		payURL, err := s.paymeSvc.BuildPaymeCheckoutURL(merchantID, transactionParam, amountTiyin)
 		if err != nil {
-			s.logger.Error(ctx, "->paymeSvc.BuildPaymeCheckoutURL failed", zap.Error(err), zap.String("order_id", ord.Order.ID))
-			return "", ord.Order.ID, fmt.Errorf("build payme checkout url failed: %w", err)
+			return "", id, fmt.Errorf("build payme checkout url failed: %w", err)
 		}
 
-		if err := s.orderRepo.AddLink(ctx, payURL, ord.Order.ID); err != nil {
-			s.logger.Error(ctx, "->orderRepo.AddLink (PAYME)", zap.Error(err), zap.String("order_id", ord.Order.ID))
-			return "", ord.Order.ID, err
+		if err := s.orderRepo.AddLink(ctx, payURL, id); err != nil {
+			return "", id, err
 		}
-		dto := mapOrdToDTO(ord)
-		dto.Status = "WAITING_PAYMENT"
-		dto.PaymentUrl = payURL
-		s.publishUpsertToAdmins(dto)
-		return payURL, ord.Order.ID, nil
+		return payURL, id, nil
 
 	default:
-		return "", ord.Order.ID, fmt.Errorf("unsupported payment method: %s", req.PaymentMethod)
+		return "", id, structs.ErrBadRequest
 	}
 }
 

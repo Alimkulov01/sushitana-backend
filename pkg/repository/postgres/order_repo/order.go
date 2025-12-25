@@ -40,6 +40,7 @@ type (
 		UpdateClickInfo(ctx context.Context, orderID, requestID, transactionParam string) error
 		UpdateIikoMeta(ctx context.Context, orderID, iikoOrderID, iikoPosID, corrID string) error
 		TryMarkNotified(ctx context.Context, orderID string, st string) (structs.NotifyTarget, bool, error)
+		GetProductPriceWithBox(ctx context.Context, productID string) (price int64, name structs.Name, url string, boxID string, err error)
 	}
 
 	repo struct {
@@ -826,4 +827,8 @@ func (r *repo) TryMarkNotified(ctx context.Context, orderID string, st string) (
 		return structs.NotifyTarget{}, false, err
 	}
 	return t, true, nil
+}
+
+func (r repo) GetProductPriceWithBox(ctx context.Context, productID string) (int64, structs.Name, string, string, error) {
+	return r.getProductPriceWithBox(ctx, productID)
 }
