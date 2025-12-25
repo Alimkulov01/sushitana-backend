@@ -3,6 +3,7 @@ package order
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -340,7 +341,21 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		if payURL == "" {
 			return "", id, fmt.Errorf("click pay url empty")
 		}
-
+		if _, err := s.clickRepo.Create(ctx, structs.Invoice{
+			ClickInvoiceID:  0,
+			ClickTransID:    0,
+			ClickPaydocID:   0,
+			MerchantTransID: merchantTransID, // orderNumber string
+			OrderID:         sql.NullString{String: id, Valid: strings.TrimSpace(id) != ""},
+			TgID:            sql.NullInt64{Int64: ord.Order.TgID, Valid: ord.Order.TgID != 0},
+			CustomerPhone:   sql.NullString{String: ord.Phone, Valid: ord.Phone != ""},
+			Amount:          cast.ToString(amountInt), // ord.Order.TotalPrice
+			Currency:        "UZS",
+			Status:          "WAITING_PAYMENT",
+			Comment:         sql.NullString{},
+		}); err != nil {
+			return "", id, fmt.Errorf("click invoice create failed: %w", err)
+		}
 		if err := s.orderRepo.AddLink(ctx, payURL, id); err != nil {
 			return "", id, err
 		}
@@ -1032,28 +1047,6 @@ func mapIikoStatusToOurStatus(iikoStatus string) string {
 	}
 }
 
-// func mapIikoStatusToOurStatus(iikoStatus string) string {
-// 	s := strings.ToUpper(strings.TrimSpace(iikoStatus))
-// 	switch {
-// 	case strings.Contains(s, "CANCEL"):
-// 		return "CANCELLED"
-// 	case strings.Contains(s, "REJECT"):
-// 		return "REJECTED"
-// 	case strings.Contains(s, "DELIVERED"):
-// 		return "DELIVERED"
-// 	case strings.Contains(s, "COOK"):
-// 		return "COOKING"
-// 	case strings.Contains(s, "READY"):
-// 		return "READY_FOR_PICKUP"
-// 	case strings.Contains(s, "WAY") || strings.Contains(s, "COURIER") || strings.Contains(s, "DELIVERY") || strings.Contains(s, "ONWAY"):
-// 		return "ON_THE_WAY"
-// 	case strings.Contains(s, "CLOSE") || strings.Contains(s, "COMPLETE"):
-// 		return "COMPLETED"
-// 	default:
-// 		return ""
-// 	}
-// }
-
 func statusTextKey(st string) texts.TextKey {
 	switch st {
 	case "WAITING_PAYMENT":
@@ -1189,44 +1182,4 @@ func mapOrdToDTO(ord structs.GetListPrimaryKeyResponse) structs.OrderDTO {
 
 func (s *service) TrySendToIiko(ctx context.Context, orderID string) error {
 	return s.sendToIikoIfAllowed(ctx, orderID)
-}
-
-func (s *service) resolveOrderForIikoWebhook(ctx context.Context, evt structs.IikoWebhookEvent) (structs.Order, bool) {
-	ext := strings.TrimSpace(evt.EventInfo.ExternalNumber)
-
-	// 1) externalNumber bor bo‘lsa:
-	if ext != "" {
-		// 1a) int bo‘lsa -> order_number
-		if num, err := strconv.ParseInt(ext, 10, 64); err == nil {
-			ord, e := s.orderRepo.GetByOrderNumber(ctx, num)
-			if e == nil {
-				return ord, true
-			}
-			s.logger.Warn(ctx, "webhook: order not found by orderNumber",
-				zap.Int64("orderNumber", num),
-				zap.Error(e),
-			)
-		} else {
-			// 1b) uuid bo‘lsa -> order_id
-			pk, e := s.orderRepo.GetByID(ctx, ext)
-			if e == nil {
-				return pk.Order, true
-			}
-			s.logger.Warn(ctx, "webhook: order not found by orderID(externalNumber)",
-				zap.String("externalNumber", ext),
-				zap.Error(e),
-			)
-		}
-	}
-
-	// 2) externalNumber yo‘q bo‘lsa (yoki topilmasa) -> iiko order id bo‘yicha fallback
-	iikoID := strings.TrimSpace(evt.EventInfo.ID)
-	if iikoID != "" {
-		ord, e := s.orderRepo.GetByIikoOrderID(ctx, iikoID)
-		if e == nil {
-			return ord, true
-		}
-	}
-
-	return structs.Order{}, false
 }

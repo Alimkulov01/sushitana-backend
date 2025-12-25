@@ -9,6 +9,7 @@ import (
 	"sushitana/pkg/logger"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -49,25 +50,36 @@ func New(p Params) Repo {
 }
 func (r repo) Create(ctx context.Context, req structs.Invoice) (int64, error) {
 	query := `
-		INSERT INTO invoices (
-			click_invoice_id,
-			click_trans_id,
-			click_paydoc_id,
-			merchant_trans_id,
-			order_id,
-			tg_id,
-			customer_phone,
-			amount,
-			currency,
-			status,
-			comment,
-			created_at,
-			updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5,
-			$6, $7, $8, $9, $10,
-			$11, $12, $13
-		) RETURNING id
+	INSERT INTO invoices (
+		click_invoice_id,
+		click_trans_id,
+		click_paydoc_id,
+		merchant_trans_id,
+		order_id,
+		tg_id,
+		customer_phone,
+		amount,
+		currency,
+		status,
+		comment,
+		created_at,
+		updated_at
+	) VALUES (
+		$1, $2, $3, $4, $5,
+		$6, $7, $8, $9, $10,
+		$11, $12, $13
+	)
+	ON CONFLICT (merchant_trans_id) DO UPDATE SET
+		click_invoice_id  = EXCLUDED.click_invoice_id,
+		order_id          = EXCLUDED.order_id,
+		tg_id             = EXCLUDED.tg_id,
+		customer_phone    = EXCLUDED.customer_phone,
+		amount            = EXCLUDED.amount,
+		currency          = EXCLUDED.currency,
+		status            = EXCLUDED.status,
+		comment           = EXCLUDED.comment,
+		updated_at        = now()
+	RETURNING id
 	`
 	var id int64
 	now := time.Now()
@@ -98,6 +110,9 @@ func (r repo) Create(ctx context.Context, req structs.Invoice) (int64, error) {
 	if err != nil {
 		r.logger.Error(ctx, "failed to insert invoice", zap.Error(err))
 		return 0, err
+	}
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+		return 0, structs.ErrNotFound
 	}
 	return id, nil
 }
