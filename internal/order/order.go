@@ -748,7 +748,13 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 
 	ext := strings.TrimSpace(evt.EventInfo.ExternalNumber)
 	if ext == "" {
-		return fmt.Errorf("iiko webhook: empty externalNumber")
+		s.logger.Info(ctx, "IIKO webhook ignored (no externalNumber)",
+			zap.String("eventType", evt.EventType),
+			zap.String("iiko_id", evt.EventInfo.ID),
+			zap.String("pos_id", evt.EventInfo.PosID),
+			zap.String("creationStatus", evt.EventInfo.CreationStatus),
+		)
+		return nil
 	}
 
 	num, err := strconv.ParseInt(ext, 10, 64)
@@ -917,7 +923,13 @@ func (s *service) HandleIikoDeliveryOrderError(ctx context.Context, evt structs.
 
 	ext := strings.TrimSpace(evt.EventInfo.ExternalNumber)
 	if ext == "" {
-		return fmt.Errorf("iiko webhook error: empty externalNumber")
+		s.logger.Info(ctx, "IIKO webhook ignored (no externalNumber)",
+			zap.String("eventType", evt.EventType),
+			zap.String("iiko_id", evt.EventInfo.ID),
+			zap.String("pos_id", evt.EventInfo.PosID),
+			zap.String("creationStatus", evt.EventInfo.CreationStatus),
+		)
+		return nil
 	}
 
 	num, err := strconv.ParseInt(ext, 10, 64)
