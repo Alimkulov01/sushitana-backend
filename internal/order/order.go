@@ -263,13 +263,13 @@ func (s *service) Create(ctx context.Context, req structs.CreateOrder) (string, 
 		switch zoneIdx {
 		case 0: // olmaliq.json
 			req.DeliveryPrice = 0
-			if productsTotal < olmaliqMin {
-				return "", "", structs.ErrMinOrder{
-					ZoneKey: "OLMALIQ",
-					Min:     olmaliqMin,
-					Current: productsTotal,
-				}
-			}
+			// if productsTotal < olmaliqMin {
+			// 	return "", "", structs.ErrMinOrder{
+			// 		ZoneKey: "OLMALIQ",
+			// 		Min:     olmaliqMin,
+			// 		Current: productsTotal,
+			// 	}
+			// }
 
 		case 1: // ohangaron.json
 			req.DeliveryPrice = 25000
