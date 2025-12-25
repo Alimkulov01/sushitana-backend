@@ -171,11 +171,12 @@ func buildCreateOrderForIiko(ord structs.GetListPrimaryKeyResponse) (structs.Iik
 		paymentKind = "Cash"
 		paymentTypeID = paymentCashID
 	case "CLICK":
-		paymentKind = "External"
-		processedExternally = true
+		paymentKind = "Card"       // ✅ MUHIM
+		processedExternally = true // qolsa ham bo‘ladi
 		paymentTypeID = paymentClickID
+
 	case "PAYME":
-		paymentKind = "External"
+		paymentKind = "Card" // ✅ MUHIM
 		processedExternally = true
 		paymentTypeID = paymentPaymeID
 	default:
