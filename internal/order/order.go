@@ -759,13 +759,9 @@ func (s *service) HandleIikoDeliveryOrderUpdate(ctx context.Context, evt structs
 
 	num, err := strconv.ParseInt(ext, 10, 64)
 	if err != nil {
-		s.logger.Warn(ctx, "IIKO webhook bad externalNumber",
-			zap.String("externalNumber", ext),
-			zap.Error(err),
-		)
-		return fmt.Errorf("iiko webhook: bad externalNumber=%q: %w", ext, err)
+		s.logger.Warn(ctx, "IIKO webhook bad externalNumber", zap.String("externalNumber", ext), zap.Error(err))
+		return nil
 	}
-
 	ord, err := s.orderRepo.GetByOrderNumber(ctx, num)
 	if err != nil {
 		s.logger.Error(ctx, "IIKO webhook GetByOrderNumber failed",
@@ -1193,4 +1189,44 @@ func mapOrdToDTO(ord structs.GetListPrimaryKeyResponse) structs.OrderDTO {
 
 func (s *service) TrySendToIiko(ctx context.Context, orderID string) error {
 	return s.sendToIikoIfAllowed(ctx, orderID)
+}
+
+func (s *service) resolveOrderForIikoWebhook(ctx context.Context, evt structs.IikoWebhookEvent) (structs.Order, bool) {
+	ext := strings.TrimSpace(evt.EventInfo.ExternalNumber)
+
+	// 1) externalNumber bor bo‘lsa:
+	if ext != "" {
+		// 1a) int bo‘lsa -> order_number
+		if num, err := strconv.ParseInt(ext, 10, 64); err == nil {
+			ord, e := s.orderRepo.GetByOrderNumber(ctx, num)
+			if e == nil {
+				return ord, true
+			}
+			s.logger.Warn(ctx, "webhook: order not found by orderNumber",
+				zap.Int64("orderNumber", num),
+				zap.Error(e),
+			)
+		} else {
+			// 1b) uuid bo‘lsa -> order_id
+			pk, e := s.orderRepo.GetByID(ctx, ext)
+			if e == nil {
+				return pk.Order, true
+			}
+			s.logger.Warn(ctx, "webhook: order not found by orderID(externalNumber)",
+				zap.String("externalNumber", ext),
+				zap.Error(e),
+			)
+		}
+	}
+
+	// 2) externalNumber yo‘q bo‘lsa (yoki topilmasa) -> iiko order id bo‘yicha fallback
+	iikoID := strings.TrimSpace(evt.EventInfo.ID)
+	if iikoID != "" {
+		ord, e := s.orderRepo.GetByIikoOrderID(ctx, iikoID)
+		if e == nil {
+			return ord, true
+		}
+	}
+
+	return structs.Order{}, false
 }

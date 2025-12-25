@@ -41,6 +41,7 @@ type (
 		UpdateIikoMeta(ctx context.Context, orderID, iikoOrderID, iikoPosID, corrID string) error
 		TryMarkNotified(ctx context.Context, orderID string, st string) (structs.NotifyTarget, bool, error)
 		GetProductPriceWithBox(ctx context.Context, productID string) (price int64, name structs.Name, url string, boxID string, err error)
+		GetByIikoOrderID(ctx context.Context, iikoOrderID string) (resp structs.Order, err error)
 	}
 
 	repo struct {
@@ -831,4 +832,68 @@ func (r *repo) TryMarkNotified(ctx context.Context, orderID string, st string) (
 
 func (r repo) GetProductPriceWithBox(ctx context.Context, productID string) (int64, structs.Name, string, string, error) {
 	return r.getProductPriceWithBox(ctx, productID)
+}
+
+func (r repo) GetByIikoOrderID(ctx context.Context, iikoOrderID string) (resp structs.Order, err error) {
+	query := `
+    SELECT 
+      o.id,
+      o.tg_id,
+      o.delivery_type,
+      o.payment_method,
+      o.payment_status,
+      o.order_status,
+      o.address,
+      o.comment,
+      o.iiko_order_id,
+      o.iiko_delivery_id,
+      o.items,
+      o.delivery_price,
+      o.order_number,
+      o.payment_url,
+      o.created_at,
+      o.updated_at,
+      c.phone
+    FROM orders AS o
+    JOIN clients AS c ON c.tgid = o.tg_id
+    WHERE o.iiko_order_id = $1
+    LIMIT 1
+  `
+
+	var (
+		order                 structs.Order
+		addrBytes, itemsBytes []byte
+		phone                 string
+	)
+
+	if err := r.db.QueryRow(ctx, query, iikoOrderID).Scan(
+		&order.ID,
+		&order.TgID,
+		&order.DeliveryType,
+		&order.PaymentMethod,
+		&order.PaymentStatus,
+		&order.Status,
+		&addrBytes,
+		&order.Comment,
+		&order.IIKOOrderID,
+		&order.IIKODeliveryID,
+		&itemsBytes,
+		&order.DeliveryPrice,
+		&order.OrderNumber,
+		&order.PaymentUrl,
+		&order.CreatedAt,
+		&order.UpdateAt,
+		&phone,
+	); err != nil {
+		return structs.Order{}, fmt.Errorf("get order by iiko_order_id failed: %w", err)
+	}
+
+	order.Phone = phone
+	r.unmarshalOrderJSON(addrBytes, itemsBytes, &order)
+
+	prodCache := map[string]structs.ProductMeta{}
+	boxCache := map[string]structs.BoxMeta{}
+	r.enrichOrder(ctx, &order, prodCache, boxCache)
+
+	return order, nil
 }
