@@ -283,13 +283,7 @@ func (c *Commands) Contact(ctx *tgrouter.Ctx) {
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.MenuButton)),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.FeedbackButton)),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.InfoButton)),
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.ContactButton)),
-		),
-		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
@@ -382,13 +376,7 @@ func (c *Commands) ShowMainMenu(ctx *tgrouter.Ctx) {
 	}
 	rows = append(rows,
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.FeedbackButton)),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.InfoButton)),
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.ContactButton)),
-		),
-		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton(texts.Get(lang, texts.LanguageButton)),
 		),
 	)
