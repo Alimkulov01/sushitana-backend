@@ -141,6 +141,7 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
             o.delivery_price,
             o.created_at,
             o.updated_at,
+			o.payment_url,
             c.phone
         FROM orders AS o
         JOIN clients AS c ON c.tgid = o.tg_id
@@ -181,6 +182,7 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 			&order.DeliveryPrice,
 			&order.CreatedAt,
 			&order.UpdateAt,
+			&order.PaymentUrl,
 			&phone,
 		); err != nil {
 			return resp, fmt.Errorf("scan order failed: %w", err)
@@ -189,10 +191,8 @@ func (r repo) GetByTgId(ctx context.Context, tgId int64) (resp structs.GetListOr
 		resp.Phone = phone
 		order.Phone = phone
 
-		// ✅ jsonb -> struct
 		r.unmarshalOrderJSON(addrBytes, itemsBytes, &order)
 
-		// ✅ GetByID bilan bir xil enrich/totals/box
 		r.enrichOrder(ctx, &order, prodCache, boxCache)
 
 		resp.Orders = append(resp.Orders, order)
@@ -479,7 +479,8 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			o.payment_url,
 			o.created_at,
 			o.updated_at,
-			c.phone
+			c.phone,
+			c.name
 		FROM orders AS o
 		JOIN clients AS c ON c.tgid = o.tg_id
 	`
@@ -563,6 +564,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			addrBytes, itemsBytes []byte
 			totalCount            int64
 			phone                 string
+			name                  string
 		)
 
 		if err := rows.Scan(
@@ -584,6 +586,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 			&order.CreatedAt,
 			&order.UpdateAt,
 			&phone,
+			&name,
 		); err != nil {
 			r.logger.Error(ctx, "err on rows.Scan", zap.Error(err))
 			return structs.GetListOrderResponse{}, fmt.Errorf("scan order failed: %w", err)
@@ -591,6 +594,7 @@ func (r repo) GetList(ctx context.Context, req structs.GetListOrderRequest) (res
 
 		resp.Count = totalCount
 		order.Phone = phone
+		order.Name = name
 
 		r.unmarshalOrderJSON(addrBytes, itemsBytes, &order)
 		r.enrichOrder(ctx, &order, prodCache, boxCache)
